@@ -2258,7 +2258,7 @@ void fnlDomainWarp3D(fnl_state state, inout FNLfloat x, inout FNLfloat y, inout 
     }
 }
 
-in vec3 pos;
+in vec3 fPos;
 out vec4 fCol;
 
 fnl_state noise = fnlCreateState(0);
@@ -2268,6 +2268,6 @@ void main() {
     noise.fractal_type = FNL_FRACTAL_FBM;
     noise.frequency = 2.85;
 
-    float n = fnlGetNoise3D(noise, pos.x,pos.y,pos.z);
+    float n = fnlGetNoise3D(noise, fPos.x,fPos.y,fPos.z);
     fCol = vec4(n,n,n,1);
 }

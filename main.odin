@@ -9,6 +9,8 @@ import "core:math/linalg/glsl"
 import "vendor:glfw"
 import gl "vendor:OpenGL"
 
+vec3 :: glsl.vec3
+
 win_width  :i32= 800
 win_height :i32= 600
 
@@ -155,24 +157,32 @@ main :: proc() {
     ///////////
 
     verts := [?]f32 {
-         0,  5, 0,
-       -5, -5, 0,
-        5, -5, 0
-    }
+         0, 0, 0,
+      }
 
     VAO: u32
     gl.GenVertexArrays(1, &VAO)
     gl.BindVertexArray(VAO)
 
-    VBO: u32
-    gl.GenBuffers(1, &VBO)
+    SSBO: u32
+    gl.CreateBuffers(1, &SSBO)
 
-    gl.BindBuffer(gl.ARRAY_BUFFER, VBO)
-    gl.BufferData(gl.ARRAY_BUFFER, size_of(verts), &verts, gl.STATIC_DRAW)
-    gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, size_of(f32)*3, uintptr(0))
-    gl.EnableVertexAttribArray(0)
+    SSBO_VERTS: [dynamic]i32
+    
+    pos := vec3{0,0,0}
 
-    gl.Enable(gl.CULL_FACE)
+    vtx: i32 = (i32(pos.x) | i32(pos.y) << 10 | i32(pos.z) << 20)
+
+    append_elem(&SSBO_VERTS, vtx)
+
+    gl.UseProgram(shad_prog)
+
+    gl.NamedBufferStorage(SSBO, size_of(SSBO), &SSBO, 0)
+    gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)
+
+    gl.UseProgram(0)
+
+    //gl.Enable(gl.CULL_FACE)
     gl.CullFace(gl.BACK)
     gl.FrontFace(gl.CCW)
 
@@ -195,16 +205,16 @@ main :: proc() {
         v_loc := gl.GetUniformLocation(shad_prog, "view")
         p_loc := gl.GetUniformLocation(shad_prog, "proj")
 
-        model := glsl.mat4Rotate(glsl.vec3{0,1,0}, cast(f32)glfw.GetTime() + 90)
-        //model := glsl.identity(glsl.mat4)
-        view  := glsl.mat4LookAt(glsl.vec3{0,0,1}, glsl.vec3{0,0,0}, glsl.vec3{0,1,0})
+        //model := glsl.mat4Rotate(vec3{0,1,0}, cast(f32)glfw.GetTime() + 90)
+        model := glsl.identity(glsl.mat4)
+        view  := glsl.mat4LookAt(vec3{0,0,1}, vec3{0,0,0}, vec3{0,1,0})
         proj  := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
 
         gl.UniformMatrix4fv(m_loc, 1, gl.FALSE, transmute([^]f32)&model)
         gl.UniformMatrix4fv(v_loc, 1, gl.FALSE, transmute([^]f32)&view)
         gl.UniformMatrix4fv(p_loc, 1, gl.FALSE, transmute([^]f32)&proj)
 
-        gl.DrawArrays(gl.TRIANGLES, 0, 3)
+        gl.DrawArrays(gl.TRIANGLES, 0, len(verts) * 6)
 
         glfw.SwapBuffers(window_handle)
 
