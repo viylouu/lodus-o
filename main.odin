@@ -35,8 +35,7 @@ main :: proc() {
         }
 
         glfw.MakeContextCurrent(window_handle)
-        glfw.SwapInterval(0)
-        glfw.SetFramebufferSizeCallback(window_handle, fbcbSize)
+        glfw.SetFramebufferSizeCallback(window_handle, fbcb_size)
 
         gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, proc(p: rawptr, name: cstring) {
             (^rawptr)(p)^ = glfw.GetProcAddress(name)
@@ -94,8 +93,6 @@ main :: proc() {
     ////// a
 
     ////// BUFFERS (i think)
-        verts := [?]f32 { 0, 0, 0 }
-
         VAO: u32
         gl.GenVertexArrays(1, &VAO)
         gl.BindVertexArray(VAO)
@@ -104,16 +101,13 @@ main :: proc() {
         gl.CreateBuffers(1, &SSBO)
 
         SSBO_VERTS: [dynamic]i32
-        
-        pos := vec3{0,0,0}
-
-        vtx: i32 = (i32(pos.x) | i32(pos.y) << 10 | i32(pos.z) << 20)
-
-        append_elem(&SSBO_VERTS, vtx)
+    
+        add_cube(&SSBO_VERTS, 0,0,0)
+        add_cube(&SSBO_VERTS, 0,1,0)
 
         gl.UseProgram(shad_prog)
 
-        gl.NamedBufferStorage(SSBO, size_of(SSBO), &SSBO, 0)
+        gl.NamedBufferStorage(SSBO, size_of(SSBO), nil, 0)
         gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)
 
         gl.UseProgram(0)
@@ -129,7 +123,7 @@ main :: proc() {
         delta := glfw.GetTime() - lastTime;
         lastTime = glfw.GetTime()
 
-        procInp(window_handle)
+        proc_inp(window_handle)
         glfw.PollEvents()
 
         gl.ClearColor(0.2, 0.3, 0.3, 1)
@@ -142,32 +136,29 @@ main :: proc() {
         v_loc := gl.GetUniformLocation(shad_prog, "view")
         p_loc := gl.GetUniformLocation(shad_prog, "proj")
 
-        //model := glsl.mat4Rotate(vec3{0,1,0}, cast(f32)glfw.GetTime() + 90)
         model := glsl.identity(glsl.mat4)
-        view  := glsl.mat4LookAt(vec3{0,0,1}, vec3{0,0,0}, vec3{0,1,0})
+        view  := glsl.mat4LookAt(vec3{2,2,2}, vec3{0,0,0}, vec3{0,1,0})
         proj  := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
 
-        // what the fuuuuck is transmute([^]f32)&mat) ????
-        gl.UniformMatrix4fv(m_loc, 1, gl.FALSE, transmute([^]f32)&model)
-        gl.UniformMatrix4fv(v_loc, 1, gl.FALSE, transmute([^]f32)&view)
-        gl.UniformMatrix4fv(p_loc, 1, gl.FALSE, transmute([^]f32)&proj)
+        gl.UniformMatrix4fv(m_loc, 1, gl.FALSE, mat4_to_gl(model))
+        gl.UniformMatrix4fv(v_loc, 1, gl.FALSE, mat4_to_gl(view))
+        gl.UniformMatrix4fv(p_loc, 1, gl.FALSE, mat4_to_gl(proj))
 
-        gl.DrawArrays(gl.TRIANGLES, 0, len(verts) * 6)
+        gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS) * 36)
 
         glfw.SwapBuffers(window_handle)
-
 
         fmt.printf("%d FPS\n", i32(1/delta))
     }
 }
 
-fbcbSize :: proc "c" (window: glfw.WindowHandle, width,height: i32) {
+fbcb_size :: proc "c" (window: glfw.WindowHandle, width,height: i32) {
     gl.Viewport(0,0,width,height)
     win_width  = width
     win_height = height
 }
 
-procInp :: proc(window: glfw.WindowHandle) {
+proc_inp :: proc(window: glfw.WindowHandle) {
     if glfw.GetKey(window, glfw.KEY_ESCAPE) == glfw.PRESS {
         glfw.SetWindowShouldClose(window, true)
     }
@@ -187,8 +178,6 @@ load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
         // why no thing :(
         arrostr: [dynamic]string
 
-        // jank because i dont know how otherwise
-        // apparently strings.split_lines_iterator returns a string???
         for line in strings.split_lines_iterator(&str) {
             if ver != "" {
                 append(&arrostr, line)
@@ -202,7 +191,7 @@ load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
         toconc: [dynamic]string
 
         for i in 0..<len(includes) {
-            append(&toconc, string(load_shader_src(includes[i])))
+            append(&toconc, cast(string)load_shader_src(includes[i]))
         }
 
         toincl := strings.concatenate(toconc[:])
@@ -211,4 +200,14 @@ load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
     }
 
     return strings.clone_to_cstring(str)
+}
+
+add_cube :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32) {
+    vtx: i32 = (x | y << 10 | z << 20)
+    append(SSBO_VERTS, vtx)
+}
+
+mat4_to_gl :: proc(mat: glsl.mat4) -> [^]f32 {
+    // magic function
+    return transmute([^]f32)&mat
 }
