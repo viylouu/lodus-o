@@ -35,6 +35,7 @@ main :: proc() {
         }
 
         glfw.MakeContextCurrent(window_handle)
+        glfw.SwapInterval(0)
         glfw.SetFramebufferSizeCallback(window_handle, fbcb_size)
 
         gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, proc(p: rawptr, name: cstring) {
@@ -140,9 +141,9 @@ main :: proc() {
         view  := glsl.mat4LookAt(vec3{2,2,2}, vec3{0,0,0}, vec3{0,1,0})
         proj  := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
 
-        gl.UniformMatrix4fv(m_loc, 1, gl.FALSE, mat4_to_gl(model))
-        gl.UniformMatrix4fv(v_loc, 1, gl.FALSE, mat4_to_gl(view))
-        gl.UniformMatrix4fv(p_loc, 1, gl.FALSE, mat4_to_gl(proj))
+        gl.UniformMatrix4fv(m_loc, 1, gl.FALSE, mat4_to_gl(&model))
+        gl.UniformMatrix4fv(v_loc, 1, gl.FALSE, mat4_to_gl(&view))
+        gl.UniformMatrix4fv(p_loc, 1, gl.FALSE, mat4_to_gl(&proj))
 
         gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS) * 36)
 
@@ -207,7 +208,7 @@ add_cube :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32) {
     append(SSBO_VERTS, vtx)
 }
 
-mat4_to_gl :: proc(mat: glsl.mat4) -> [^]f32 {
+mat4_to_gl :: proc(mat: ^glsl.mat4) -> [^]f32 {
     // magic function
-    return transmute([^]f32)&mat
+    return transmute([^]f32)mat
 }
