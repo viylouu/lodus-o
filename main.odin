@@ -46,32 +46,11 @@ main :: proc() {
     ////// a
 
     ///// LOAD SHADERS
-        vert_src := load_shader_src("assets/shaders/base.vert");   frag_src := load_shader_src("assets/shaders/base.frag", []string{ "assets/shaders/fnl.glsl" })
+        vert_shad := load_shader(gl.VERTEX_SHADER, "assets/shaders/base.vert")
+        frag_shad := load_shader(gl.FRAGMENT_SHADER, "assets/shaders/base.frag", []string{ "assets/shaders/fnl.glsl" })        
 
-        vert_shad: u32;                                            frag_shad: u32
-        vert_shad = gl.CreateShader(gl.VERTEX_SHADER);             frag_shad = gl.CreateShader(gl.FRAGMENT_SHADER)
-        gl.ShaderSource(vert_shad, 1, &vert_src, nil);             gl.ShaderSource(frag_shad, 1, &frag_src, nil)
-        gl.CompileShader(vert_shad);                               gl.CompileShader(frag_shad)
-
-        v_succ, f_succ: i32
-
-        gl.GetShaderiv(vert_shad, gl.COMPILE_STATUS, &v_succ)
-        if !bool(v_succ) {
-            fmt.eprint("vertex shader compilation failed\n")
-            log: [512]u8
-            gl.GetShaderInfoLog(vert_shad, 512, nil, &log[0])
-            fmt.eprintln(string(log[:]))
-            return
-        }
-
-        gl.GetShaderiv(frag_shad, gl.COMPILE_STATUS, &f_succ)
-        if !bool(f_succ) {
-            fmt.eprint("fragment shader comp failed\n")
-            log: [512]u8
-            gl.GetShaderInfoLog(frag_shad, 512, nil, &log[0])
-            fmt.eprintln(string(log[:]))
-            return
-        }
+        if vert_shad == 0 { return }
+        if frag_shad == 0 { return }
 
         shad_succ: i32
         shad_prog: u32
@@ -180,19 +159,20 @@ load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
     
     if includes != nil {
         ver := ""
-        // why no thing :(
         arrostr: [dynamic]string
 
         for line in strings.split_lines_iterator(&str) {
             if ver != "" {
                 append(&arrostr, line)
+                append(&arrostr, "\n")
                 continue
             }   ver = line
         }
 
+        fmt.println(ver)
+
         ostr := strings.concatenate(arrostr[:])
 
-        // why cant you create a static array of size len(includes), and set all the values to default on initialize???
         toconc: [dynamic]string
 
         for i in 0..<len(includes) {
@@ -205,6 +185,27 @@ load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
     }
 
     return strings.clone_to_cstring(str)
+}
+
+load_shader :: proc(type: u32, path: string, include: []string = nil) -> u32 {
+    src := load_shader_src(path, include)
+
+    shad: u32                          
+    shad = gl.CreateShader(type)           
+    gl.ShaderSource(shad, 1, &src, nil)            
+    gl.CompileShader(shad)
+
+    succ: i32
+    gl.GetShaderiv(shad, gl.COMPILE_STATUS, &succ)
+    if !bool(succ) {
+        fmt.eprintf("shader compilation failed! (%s)\n", path)
+        log: [512]u8
+        gl.GetShaderInfoLog(shad, 512, nil, &log[0])
+        fmt.eprintln(string(log[:]))
+        return 0
+    }
+
+    return shad
 }
 
 add_cube :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32) {

@@ -12,7 +12,7 @@ void main() {
     noise.fractal_type = FNL_FRACTAL_FBM;
     noise.frequency = 2.85;
 
-    vec3 rPos = floor(fPos * 8) / 8;
+    vec3 rPos = floor(fPos * 16) / 16;
 
     // fix for werid clipping issues
     switch(norm) {
@@ -29,4 +29,4 @@ void main() {
 
     float n = fnlGetNoise3D(noise, rPos.x,rPos.y,rPos.z) *.5+.5;
     fCol = vec4(n,n,n,1);
-}
+} 
