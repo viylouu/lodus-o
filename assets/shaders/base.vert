@@ -9,6 +9,7 @@ layout(binding = 0, std430) readonly buffer SSBO {
 };
 
 out vec3 fPos;
+flat out int norm;
 
 const vec3 facePosses[] = vec3[](
     vec3(0,0,1), vec3(0,1,1), vec3(1,1,1), vec3(1,1,1), vec3(1,0,1), vec3(0,0,1), // front
@@ -20,18 +21,22 @@ const vec3 facePosses[] = vec3[](
 );
 
 void main() {
-    int index = gl_VertexID / 36;
+    int index = gl_VertexID / 6;
     int packdata = data[index];
-    int cVertexID = gl_VertexID % 36;
+    int cVertexID = gl_VertexID % 6;
 
-    int x = (packdata) & 0x3FF;
-    int y = (packdata >> 10) & 0x3FF;
-    int z = (packdata >> 20) & 0x3FF;
+    int x = (packdata) & 0x3F;
+    int y = (packdata >> 6) & 0x3F;
+    int z = (packdata >> 12) & 0x3F;
     vec3 pos = vec3(x,y,z);
 
-    pos += facePosses[cVertexID];
+    int normal = (packdata >> 18) & 0x7;
+
+    pos += facePosses[cVertexID + normal * 6];
 
     gl_Position = proj * view * model * vec4(pos,1);
 
     fPos = (model * vec4(pos,1)).xyz;
+
+    norm = normal;
 }

@@ -105,14 +105,18 @@ main :: proc() {
     
         add_cube(&SSBO_VERTS, 0,0,0)
         add_cube(&SSBO_VERTS, 0,1,0)
+        add_cube(&SSBO_VERTS, 1,0,0)
+        add_cube(&SSBO_VERTS, 0,0,1)
 
         gl.UseProgram(shad_prog)
 
-        gl.NamedBufferStorage(SSBO, size_of(SSBO), nil, 0)
+        gl.NamedBufferStorage(SSBO, len(SSBO_VERTS) * size_of(i32), &SSBO_VERTS[0], gl.NONE)
         gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)
 
         gl.UseProgram(0)
     ////// a
+
+    gl.Enable(gl.DEPTH_TEST)
 
     gl.Enable(gl.CULL_FACE)
     gl.CullFace(gl.BACK)
@@ -128,7 +132,7 @@ main :: proc() {
         glfw.PollEvents()
 
         gl.ClearColor(0.2, 0.3, 0.3, 1)
-        gl.Clear(gl.COLOR_BUFFER_BIT)
+        gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
         gl.UseProgram(shad_prog)
         gl.BindVertexArray(VAO)
@@ -145,7 +149,7 @@ main :: proc() {
         gl.UniformMatrix4fv(v_loc, 1, gl.FALSE, mat4_to_gl(&view))
         gl.UniformMatrix4fv(p_loc, 1, gl.FALSE, mat4_to_gl(&proj))
 
-        gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS) * 36)
+        gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS) * 6)
 
         glfw.SwapBuffers(window_handle)
 
@@ -204,8 +208,10 @@ load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
 }
 
 add_cube :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32) {
-    vtx: i32 = (x | y << 10 | z << 20)
-    append(SSBO_VERTS, vtx)
+    for i in 0..<6 {
+        vtx: i32 = (x | y << 6 | z << 12 | i32(i) << 18)
+        append(SSBO_VERTS, vtx)
+    }
 }
 
 mat4_to_gl :: proc(mat: ^glsl.mat4) -> [^]f32 {
