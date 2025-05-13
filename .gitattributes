@@ -1,1 +1,2 @@
 assets/shaders/fnl.glsl linguist-detectable=false
+*.frag lingust-language=glsl
