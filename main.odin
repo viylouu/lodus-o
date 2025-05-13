@@ -11,181 +11,117 @@ import gl "vendor:OpenGL"
 
 vec3 :: glsl.vec3
 
-win_width  :i32= 800
-win_height :i32= 600
+win_width: i32  = 800
+win_height: i32 = 600
 
 GL_VERSION_MAJOR :: 4
 GL_VERSION_MINOR :: 6
 
 main :: proc() {
-    glfw.Init(); defer glfw.Terminate()
+    ////// LOAD GLFW AND OPENGL
+        if !bool(glfw.Init()) {
+            fmt.eprint("glfw failed to init!")
+            return
+        }
 
-    glfw.WindowHint(glfw.RESIZABLE, glfw.TRUE)
-    glfw.WindowHint(glfw.OPENGL_FORWARD_COMPAT, glfw.TRUE)
-    glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_VERSION_MAJOR)
-    glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_VERSION_MINOR)
-    glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+        window_handle := glfw.CreateWindow(win_width, win_height, "hi", nil, nil)
 
-    window_handle := glfw.CreateWindow(win_width, win_height, "hi", nil, nil)
-    if window_handle == nil {
-        fmt.eprint("failed to create window!")
-        return
-    }
+        defer glfw.Terminate()
+        defer glfw.DestroyWindow(window_handle)
 
-    glfw.MakeContextCurrent(window_handle)
-    glfw.SwapInterval(0)
-    glfw.SetFramebufferSizeCallback(window_handle, fbcbSize)
+        if window_handle == nil {
+            fmt.eprint("failed to create window!")
+            return
+        }
 
-    gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, proc(p: rawptr, name: cstring) {
-        (^rawptr)(p)^ = glfw.GetProcAddress(name)
-    })
+        glfw.MakeContextCurrent(window_handle)
+        glfw.SwapInterval(0)
+        glfw.SetFramebufferSizeCallback(window_handle, fbcbSize)
 
-    gl.Viewport(0,0,win_width,win_height)
+        gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, proc(p: rawptr, name: cstring) {
+            (^rawptr)(p)^ = glfw.GetProcAddress(name)
+        })
 
-    /*
-    v_data, v_ok := os.read_entire_file("assets/shaders/base.vert")
-    if !v_ok {
-        fmt.eprint("failed to load vertex shader! (base.vert)")
-        return
-    }
-    v_str    := strings.clone_from_bytes(v_data)
-    vert_src := strings.clone_to_cstring(v_str)
+        gl.Viewport(0,0,win_width,win_height)
+    ////// a
 
-    f_data, f_ok := os.read_entire_file("assets/shaders/base.frag")
-    if !f_ok {
-        fmt.eprint("failed to load fragment shader! (base.frag)")
-        return
-    }
-    f_str    := strings.clone_from_bytes(f_data)
-    frag_src := strings.clone_to_cstring(f_str)
+    ///// LOAD SHADERS
+        vert_src := load_shader_src("assets/shaders/base.vert");   frag_src := load_shader_src("assets/shaders/base.frag", []string{ "assets/shaders/fnl.glsl" })
 
-    frag_shad, vert_shad: u32
-    vert_shad = gl.CreateShader(gl.VERTEX_SHADER)
-    frag_shad = gl.CreateShader(gl.FRAGMENT_SHADER)
+        vert_shad: u32;                                            frag_shad: u32
+        vert_shad = gl.CreateShader(gl.VERTEX_SHADER);             frag_shad = gl.CreateShader(gl.FRAGMENT_SHADER)
+        gl.ShaderSource(vert_shad, 1, &vert_src, nil);             gl.ShaderSource(frag_shad, 1, &frag_src, nil)
+        gl.CompileShader(vert_shad);                               gl.CompileShader(frag_shad)
 
-    gl.ShaderSource(vert_shad, 1, &vert_src,nil)
-    gl.ShaderSource(frag_shad, 1, &frag_src,nil)
-    gl.CompileShader(vert_shad)
-    gl.CompileShader(frag_shad)
+        v_succ, f_succ: i32
 
-    shad_succ: i32
-    shad_prog: u32
-    shad_prog = gl.CreateProgram(); defer gl.DeleteProgram(shad_prog)
-    gl.AttachShader(shad_prog, vert_shad)
-    gl.AttachShader(shad_prog, frag_shad)
-    gl.LinkProgram(shad_prog)
+        gl.GetShaderiv(vert_shad, gl.COMPILE_STATUS, &v_succ)
+        if !bool(v_succ) {
+            fmt.eprint("vertex shader compilation failed\n")
+            log: [512]u8
+            gl.GetShaderInfoLog(vert_shad, 512, nil, &log[0])
+            fmt.eprintln(string(log[:]))
+            return
+        }
 
-    gl.DeleteShader(vert_shad)
-    gl.DeleteShader(frag_shad)
-    defer gl.DeleteProgram(shad_prog)
+        gl.GetShaderiv(frag_shad, gl.COMPILE_STATUS, &f_succ)
+        if !bool(f_succ) {
+            fmt.eprint("fragment shader comp failed\n")
+            log: [512]u8
+            gl.GetShaderInfoLog(frag_shad, 512, nil, &log[0])
+            fmt.eprintln(string(log[:]))
+            return
+        }
 
-    gl.GetProgramiv(shad_prog, gl.LINK_STATUS, &shad_succ)
-    if shad_succ == 0 {
-        fmt.eprintln("SHADER ERR")
-        return
-    }
-    */
+        shad_succ: i32
+        shad_prog: u32
+        shad_prog = gl.CreateProgram(); defer gl.DeleteProgram(shad_prog)
+        gl.AttachShader(shad_prog, vert_shad)
+        gl.AttachShader(shad_prog, frag_shad)
+        gl.LinkProgram(shad_prog)
 
-    /*
-    // there used to be something here but ok
-    vert_src := strings.clone_to_cstring(v_str)
+        gl.DeleteShader(vert_shad)
+        gl.DeleteShader(frag_shad)
 
-    f_data, f_ok := os.read_entire_file("assets/shaders/base.frag")
-    if !f_ok {
-        fmt.eprint("failed to load fragment shader! (base.frag)")
-        return
-    }
-    f_str    := strings.clone_from_bytes(f_data)
-    frag_src := strings.clone_to_cstring(f_str)
-    */
-    
-    vert_src := load_shader_src("assets/shaders/base.vert")
-    frag_src := load_shader_src("assets/shaders/base.frag", []string{ "assets/shaders/fnl.glsl" })
+        gl.GetProgramiv(shad_prog, gl.LINK_STATUS, &shad_succ)
+        if !bool(shad_succ) {
+            fmt.eprintln("SHADER PROGRAM LINKING FAILED\n")
+            log: [512]u8
+            gl.GetProgramInfoLog(shad_prog, 512, nil, &log[0])
+            fmt.eprintln(string(log[:]))
+            return
+        }
+    ////// a
 
+    ////// BUFFERS (i think)
+        verts := [?]f32 { 0, 0, 0 }
 
-    frag_shad, vert_shad: u32
-    vert_shad = gl.CreateShader(gl.VERTEX_SHADER)
-    frag_shad = gl.CreateShader(gl.FRAGMENT_SHADER)
+        VAO: u32
+        gl.GenVertexArrays(1, &VAO)
+        gl.BindVertexArray(VAO)
 
-    gl.ShaderSource(vert_shad, 1, &vert_src, nil)
-    gl.ShaderSource(frag_shad, 1, &frag_src, nil)
-    gl.CompileShader(vert_shad)
-    gl.CompileShader(frag_shad)
+        SSBO: u32
+        gl.CreateBuffers(1, &SSBO)
 
-    v_success: i32
-    f_success: i32
+        SSBO_VERTS: [dynamic]i32
+        
+        pos := vec3{0,0,0}
 
-    // Check vertex shader compilation status
-    gl.GetShaderiv(vert_shad, gl.COMPILE_STATUS, &v_success)
-    if v_success == 0 {
-        fmt.eprint("vertex shader compilation failed\n")
-        log: [512]u8
-        gl.GetShaderInfoLog(vert_shad, 512, nil, &log[0])
-        fmt.eprintln(strings.clone_from_bytes(log[:]))
-        return
-    }
+        vtx: i32 = (i32(pos.x) | i32(pos.y) << 10 | i32(pos.z) << 20)
 
-    // Check fragment shader compilation status
-    gl.GetShaderiv(frag_shad, gl.COMPILE_STATUS, &f_success)
-    if f_success == 0 {
-        fmt.eprint("fragment shader compilation failed\n")
-        log: [512]u8
-        gl.GetShaderInfoLog(frag_shad, 512, nil, &log[0])
-        fmt.eprintln(strings.clone_from_bytes(log[:]))
-        return
-    }
+        append_elem(&SSBO_VERTS, vtx)
 
-    shad_succ: i32
-    shad_prog: u32
-    shad_prog = gl.CreateProgram(); defer gl.DeleteProgram(shad_prog)
-    gl.AttachShader(shad_prog, vert_shad)
-    gl.AttachShader(shad_prog, frag_shad)
-    gl.LinkProgram(shad_prog)
+        gl.UseProgram(shad_prog)
 
-    gl.DeleteShader(vert_shad)
-    gl.DeleteShader(frag_shad)
+        gl.NamedBufferStorage(SSBO, size_of(SSBO), &SSBO, 0)
+        gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)
 
-    gl.GetProgramiv(shad_prog, gl.LINK_STATUS, &shad_succ)
-    if shad_succ == 0 {
-        fmt.eprintln("SHADER PROGRAM LINKING FAILED\n")
-        log: [512]u8
-        gl.GetProgramInfoLog(shad_prog, 512, nil, &log[0])
-        fmt.eprintln(strings.clone_from_bytes(log[:]))
-        return
-    }
+        gl.UseProgram(0)
+    ////// a
 
-
-    ///////////
-
-    verts := [?]f32 {
-         0, 0, 0,
-      }
-
-    VAO: u32
-    gl.GenVertexArrays(1, &VAO)
-    gl.BindVertexArray(VAO)
-
-    SSBO: u32
-    gl.CreateBuffers(1, &SSBO)
-
-    SSBO_VERTS: [dynamic]i32
-    
-    pos := vec3{0,0,0}
-
-    vtx: i32 = (i32(pos.x) | i32(pos.y) << 10 | i32(pos.z) << 20)
-
-    append_elem(&SSBO_VERTS, vtx)
-
-    gl.UseProgram(shad_prog)
-
-    gl.NamedBufferStorage(SSBO, size_of(SSBO), &SSBO, 0)
-    gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)
-
-    gl.UseProgram(0)
-
-    //gl.Enable(gl.CULL_FACE)
+    gl.Enable(gl.CULL_FACE)
     gl.CullFace(gl.BACK)
-    gl.FrontFace(gl.CCW)
+    gl.FrontFace(gl.CW)
 
     lastTime: f64;
 
