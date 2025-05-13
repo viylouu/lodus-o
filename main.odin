@@ -169,8 +169,6 @@ load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
             }   ver = line
         }
 
-        fmt.println(ver)
-
         ostr := strings.concatenate(arrostr[:])
 
         toconc: [dynamic]string
