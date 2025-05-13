@@ -86,12 +86,8 @@ main :: proc() {
     }
     */
 
-    v_data, v_ok := os.read_entire_file("assets/shaders/base.vert")
-    if !v_ok {
-        fmt.eprint("failed to load vertex shader! (base.vert)")
-        return
-    }
-    v_str    := strings.clone_from_bytes(v_data)
+    /*
+    // there used to be something here but ok
     vert_src := strings.clone_to_cstring(v_str)
 
     f_data, f_ok := os.read_entire_file("assets/shaders/base.frag")
@@ -101,6 +97,11 @@ main :: proc() {
     }
     f_str    := strings.clone_from_bytes(f_data)
     frag_src := strings.clone_to_cstring(f_str)
+    */
+    
+    vert_src := load_shader_src("assets/shaders/base.vert")
+    frag_src := load_shader_src("assets/shaders/base.frag", []string{ "assets/shaders/fnl.glsl" })
+
 
     frag_shad, vert_shad: u32
     vert_shad = gl.CreateShader(gl.VERTEX_SHADER)
@@ -210,6 +211,7 @@ main :: proc() {
         view  := glsl.mat4LookAt(vec3{0,0,1}, vec3{0,0,0}, vec3{0,1,0})
         proj  := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
 
+        // what the fuuuuck is transmute([^]f32)&mat) ????
         gl.UniformMatrix4fv(m_loc, 1, gl.FALSE, transmute([^]f32)&model)
         gl.UniformMatrix4fv(v_loc, 1, gl.FALSE, transmute([^]f32)&view)
         gl.UniformMatrix4fv(p_loc, 1, gl.FALSE, transmute([^]f32)&proj)
@@ -233,4 +235,44 @@ procInp :: proc(window: glfw.WindowHandle) {
     if glfw.GetKey(window, glfw.KEY_ESCAPE) == glfw.PRESS {
         glfw.SetWindowShouldClose(window, true)
     }
+}
+
+load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
+    data, ok := os.read_entire_file(path)
+    if !ok {
+        fmt.eprintf("failed to load shader! (%s)\n", path)
+        return ""
+    } defer delete(data)
+
+    str := string(data)
+    
+    if includes != nil {
+        ver := ""
+        // why no thing :(
+        arrostr: [dynamic]string
+
+        // jank because i dont know how otherwise
+        // apparently strings.split_lines_iterator returns a string???
+        for line in strings.split_lines_iterator(&str) {
+            if ver != "" {
+                append(&arrostr, line)
+                continue
+            }   ver = line
+        }
+
+        ostr := strings.concatenate(arrostr[:])
+
+        // why cant you create a static array of size len(includes), and set all the values to default on initialize???
+        toconc: [dynamic]string
+
+        for i in 0..<len(includes) {
+            append(&toconc, string(load_shader_src(includes[i])))
+        }
+
+        toincl := strings.concatenate(toconc[:])
+
+        str = strings.concatenate([]string{ver, toincl, ostr})
+    }
+
+    return strings.clone_to_cstring(str)
 }
