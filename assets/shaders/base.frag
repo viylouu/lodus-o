@@ -1,5 +1,7 @@
 #version 460 core
 
+uniform float texSize;
+
 in vec3 fPos;
 flat in int norm;
 
@@ -12,9 +14,12 @@ void main() {
     noise.fractal_type = FNL_FRACTAL_FBM;
     noise.frequency = 2.85;
 
-    vec3 rPos = floor(fPos * 16) / 16;
+    vec3 rPos = fPos;
+    if (texSize != 0) {
+        rPos = floor(rPos * texSize) / texSize;
+    }
 
-    // fix for werid clipping issues
+    // fix for werid "clipping" issues
     switch(norm) {
         case 0:
         case 1:

@@ -34,6 +34,8 @@ last_mouse_x, last_mouse_y: f32
 //// GLOBALS
 delta: f64
 
+tex_size: f32 = 8
+
 main :: proc() {
     window_handle := init_glfw_and_window()
     if window_handle == nil { fmt.eprintln("failed to init glfw!"); return }
@@ -49,6 +51,13 @@ main :: proc() {
     VAO, SSBO_VERTS := gen_buffers(shad_prog)
 
     enable_gl()
+
+    gl.UseProgram(shad_prog)
+
+        ts_loc := gl.GetUniformLocation(shad_prog, "texSize")
+        gl.Uniform1f(ts_loc, tex_size)
+
+    gl.UseProgram(0)
 
     lastTime: f64;
     for !glfw.WindowShouldClose(window_handle) {
@@ -96,8 +105,8 @@ proc_inp :: proc(window: glfw.WindowHandle) {
     if glfw.GetKey(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS { camera_pos.y -= f32(delta) * speed }
     if glfw.GetKey(window, glfw.KEY_SPACE) == glfw.PRESS      { camera_pos.y += f32(delta) * speed }
 
-    if camera_pitch > 89  { camera_pitch = 89  }
-    if camera_pitch < -89 { camera_pitch = -89 }
+    if camera_pitch > 89.9  { camera_pitch = 89.9  }
+    if camera_pitch < -89.9 { camera_pitch = -89.9 }
 
     dir: vec3
     dir.x = math.cos_f32(linalg.to_radians(camera_yaw)) * math.cos_f32(linalg.to_radians(camera_pitch))
