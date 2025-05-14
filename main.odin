@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:math"
 import "core:math/linalg"
 import "core:math/linalg/glsl"
 
@@ -19,7 +20,19 @@ GL_VERSION_MAJOR :: 4
 GL_VERSION_MINOR :: 6
 
 //// CAMERA SYSTEM
-camera_pos: vec3
+camera_pos: vec3   = vec3{0,0,3}
+camera_front: vec3 = vec3{0,0,-1}
+camera_up:  vec3   = vec3{0,1,0}
+
+camera_yaw: f32    = -90
+camera_pitch:f32   = 0
+
+first_mouse: bool = true
+
+last_mouse_x, last_mouse_y: f32
+
+//// GLOBALS
+delta: f64
 
 main :: proc() {
     window_handle := init_glfw_and_window()
@@ -39,7 +52,7 @@ main :: proc() {
 
     lastTime: f64;
     for !glfw.WindowShouldClose(window_handle) {
-        delta := get_delta(&lastTime)
+        delta = get_delta(&lastTime)
 
         proc_inp(window_handle)
         glfw.PollEvents()
@@ -53,7 +66,7 @@ main :: proc() {
 
         pv_loc   := gl.GetUniformLocation(shad_prog, "projview")
 
-        view     := glsl.mat4LookAt(vec3{2,2,2}, vec3{0,0,0}, vec3{0,1,0})
+        view     := glsl.mat4LookAt(camera_pos, camera_pos + camera_front, camera_up)
         proj     := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
         projview := proj * view
 
@@ -70,9 +83,28 @@ main :: proc() {
 
 
 proc_inp :: proc(window: glfw.WindowHandle) {
-    if glfw.GetKey(window, glfw.KEY_ESCAPE) == glfw.PRESS {
-        glfw.SetWindowShouldClose(window, true)
-    }
+    if glfw.GetKey(window, glfw.KEY_ESCAPE) == glfw.PRESS { glfw.SetWindowShouldClose(window, true) }
+    
+    speed: f32 = 4
+
+    camera_right := glsl.normalize(glsl.cross(camera_front, camera_up))
+
+    if glfw.GetKey(window, glfw.KEY_W) == glfw.PRESS          { camera_pos -= glsl.cross(camera_right, camera_up) * f32(delta) * speed }
+    if glfw.GetKey(window, glfw.KEY_S) == glfw.PRESS          { camera_pos += glsl.cross(camera_right, camera_up) * f32(delta) * speed }
+    if glfw.GetKey(window, glfw.KEY_A) == glfw.PRESS          { camera_pos -= camera_right * f32(delta) * speed }
+    if glfw.GetKey(window, glfw.KEY_D) == glfw.PRESS          { camera_pos += camera_right * f32(delta) * speed }
+    if glfw.GetKey(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS { camera_pos.y -= f32(delta) * speed }
+    if glfw.GetKey(window, glfw.KEY_SPACE) == glfw.PRESS      { camera_pos.y += f32(delta) * speed }
+
+    if camera_pitch > 89  { camera_pitch = 89  }
+    if camera_pitch < -89 { camera_pitch = -89 }
+
+    dir: vec3
+    dir.x = math.cos_f32(linalg.to_radians(camera_yaw)) * math.cos_f32(linalg.to_radians(camera_pitch))
+    dir.z = math.sin_f32(linalg.to_radians(camera_yaw)) * math.cos_f32(linalg.to_radians(camera_pitch))
+    dir.y = math.sin_f32(linalg.to_radians(camera_pitch))
+    camera_front = glsl.normalize(dir)
+
 }
 
 ////////////// HELPER FUNCTIONS
@@ -81,6 +113,27 @@ proc_inp :: proc(window: glfw.WindowHandle) {
             gl.Viewport(0,0,width,height)
             win_width  = width
             win_height = height
+        }
+
+        cpcb :: proc "c" (window: glfw.WindowHandle, x,y: f64) {
+            mx, my := f32(x), f32(y)
+
+            if first_mouse {
+                last_mouse_x = mx
+                last_mouse_y = my
+                first_mouse = false
+            }
+            
+            xoff, yoff := mx - last_mouse_x, last_mouse_y - my
+            last_mouse_x = mx
+            last_mouse_y = my
+
+            sens :f32: 800
+            xoff *= sens * f32(delta)
+            yoff *= sens * f32(delta)
+
+            camera_yaw   += xoff
+            camera_pitch += yoff
         }
 
         add_cube :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32) {
@@ -185,6 +238,8 @@ init_glfw_and_window :: proc() -> glfw.WindowHandle {
     glfw.MakeContextCurrent(window_handle)
     glfw.SwapInterval(0)
     glfw.SetFramebufferSizeCallback(window_handle, fbcb_size)
+    glfw.SetInputMode(window_handle, glfw.CURSOR, glfw.CURSOR_DISABLED)
+    glfw.SetCursorPosCallback(window_handle, cpcb)
 
     gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, proc(p: rawptr, name: cstring) {
         (^rawptr)(p)^ = glfw.GetProcAddress(name)
