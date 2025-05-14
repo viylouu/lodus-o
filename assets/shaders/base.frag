@@ -34,9 +34,6 @@ void main() {
     }
 
     float n = fnlGetNoise3D(noise, rPos.x,rPos.y,rPos.z) *.5+.5;
-    n += rPos.y * 0.05;
-    n -= 1;
-    n = floor(n * 8) / 8;
 
-    fCol = vec4(n,n,n,1);
+    fCol = mix(vec4(0,0,0,1),vec4(1,1,1,1), n);
 } 

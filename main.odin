@@ -8,6 +8,7 @@ import "core:math/linalg"
 import "core:math/linalg/glsl"
 
 import fnl "libs/fastnoiselite"
+import gui "libs/imgui"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
@@ -60,6 +61,8 @@ main :: proc() {
         gl.Uniform1f(ts_loc, tex_size)
 
     gl.UseProgram(0)
+
+    gui.InitForOpenGL(window_handle, true)
 
     lastTime: f64;
     for !glfw.WindowShouldClose(window_handle) {
