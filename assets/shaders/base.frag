@@ -13,6 +13,7 @@ void main() {
     noise.noise_type = FNL_NOISE_PERLIN;
     noise.fractal_type = FNL_FRACTAL_FBM;
     noise.frequency = 2.85;
+    noise.octaves = 8;
 
     vec3 rPos = fPos;
     if (texSize != 0) {
@@ -33,5 +34,9 @@ void main() {
     }
 
     float n = fnlGetNoise3D(noise, rPos.x,rPos.y,rPos.z) *.5+.5;
+    n += rPos.y * 0.05;
+    n -= 1;
+    n = floor(n * 8) / 8;
+
     fCol = vec4(n,n,n,1);
 } 

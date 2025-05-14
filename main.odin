@@ -7,6 +7,8 @@ import "core:math"
 import "core:math/linalg"
 import "core:math/linalg/glsl"
 
+import fnl "libs/fastnoiselite"
+
 import "vendor:glfw"
 import gl "vendor:OpenGL"
 
@@ -116,6 +118,55 @@ proc_inp :: proc(window: glfw.WindowHandle) {
 
 }
 
+
+////////////// WORLD GENERATION
+
+        gen_chunk :: proc(SV: ^[dynamic]i32) {
+            noise := fnl.create_state(0)
+            noise.frequency = 0.05
+            noise.noise_type = fnl.Noise_Type.Perlin
+
+            dat: [32][32][32]bool
+
+            for x in 0..<32 {
+                for z in 0..<32 {
+                    for y in 0..<32 {
+                        if y > int(f32(fnl.get_noise_2d(noise, f32(x),f32(z)) * 12 + 16)) { continue }
+
+                        dat[x][y][z] = true
+                    }
+                }
+            }
+
+            for x: i32; x < 32; x += 1 {
+                for y: i32; y < 32; y += 1 {
+                    for z: i32; z < 32; z += 1 {
+                        if !dat[x][y][z] { continue }
+
+                        if x > 0 && !dat[x-1][y][z] {
+                            add_face(SV, x,y,z, 2)
+                        } if x < 31 && !dat[x+1][y][z] {
+                            add_face(SV, x,y,z, 3)
+                        }
+
+                        if y > 0 && !dat[x][y-1][z] {
+                            add_face(SV, x,y,z, 5)
+                        } if y < 31 && !dat[x][y+1][z] {
+                            add_face(SV, x,y,z, 4)
+                        }
+
+                        if z > 0 && !dat[x][y][z-1] {
+                            add_face(SV, x,y,z, 1)
+                        } if z < 31 && !dat[x][y][z+1] {
+                            add_face(SV, x,y,z, 0)
+                        }
+                    }
+                }
+            }
+        }
+
+
+
 ////////////// HELPER FUNCTIONS
 
         fbcb_size :: proc "c" (window: glfw.WindowHandle, width,height: i32) {
@@ -137,9 +188,9 @@ proc_inp :: proc(window: glfw.WindowHandle) {
             last_mouse_x = mx
             last_mouse_y = my
 
-            sens :f32: 800
-            xoff *= sens * f32(delta)
-            yoff *= sens * f32(delta)
+            sens :f32: 0.1
+            xoff *= sens
+            yoff *= sens
 
             camera_yaw   += xoff
             camera_pitch += yoff
@@ -152,10 +203,23 @@ proc_inp :: proc(window: glfw.WindowHandle) {
             }
         }
 
+        // normal: 
+        // 0 -> front
+        // 1 -> back
+        // 2 -> left
+        // 3 -> right
+        // 4 -> top
+        // 5 -> bottom
+        add_face :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32, normal: u8) {
+            vtx: i32 = (x | y << 6 | z << 12 | i32(normal) << 18)
+            append(SSBO_VERTS, vtx)
+        }
+
         mat4_to_gl :: proc(mat: ^glsl.mat4) -> [^]f32 {
             // magic function
             return transmute([^]f32)mat
         }
+
 
 
 /////////////// BIG HELPER FUNCTIONS
@@ -298,10 +362,7 @@ gen_buffers :: proc(shad_prog: u32) -> (u32, [dynamic]i32) {
 
     SSBO_VERTS: [dynamic]i32
 
-    add_cube(&SSBO_VERTS, 0,0,0)
-    add_cube(&SSBO_VERTS, 0,1,0)
-    add_cube(&SSBO_VERTS, 1,0,0)
-    add_cube(&SSBO_VERTS, 0,0,1)
+    gen_chunk(&SSBO_VERTS)
 
     gl.UseProgram(shad_prog)
 
@@ -327,3 +388,4 @@ get_delta :: proc(lastTime: ^f64) -> f64 {
 
     return delta
 }
+
