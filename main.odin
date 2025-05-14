@@ -95,52 +95,50 @@ main :: proc() {
         gl.UseProgram(0)
     ////// a
 
-    gl.Enable(gl.DEPTH_TEST)
+    ////// ENABLING STUFF
+        gl.Enable(gl.DEPTH_TEST)
 
-    gl.Enable(gl.CULL_FACE)
-    gl.CullFace(gl.BACK)
-    gl.FrontFace(gl.CW)
+        gl.Enable(gl.CULL_FACE)
+        gl.CullFace(gl.BACK)
+        gl.FrontFace(gl.CW)
+    ////// a
 
     lastTime: f64;
 
     for !glfw.WindowShouldClose(window_handle) {
+        //// DELTA TIME
         delta := glfw.GetTime() - lastTime;
         lastTime = glfw.GetTime()
 
+        //// INPUTS
         proc_inp(window_handle)
         glfw.PollEvents()
 
+        //// CLEARING
         gl.ClearColor(0.2, 0.3, 0.3, 1)
         gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
+        //// RENDERING THE SCENE
         gl.UseProgram(shad_prog)
         gl.BindVertexArray(VAO)
 
-        m_loc := gl.GetUniformLocation(shad_prog, "model")
-        v_loc := gl.GetUniformLocation(shad_prog, "view")
-        p_loc := gl.GetUniformLocation(shad_prog, "proj")
+        pv_loc   := gl.GetUniformLocation(shad_prog, "projview")
 
-        model := glsl.identity(glsl.mat4)
-        view  := glsl.mat4LookAt(vec3{2,2,2}, vec3{0,0,0}, vec3{0,1,0})
-        proj  := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
+        view     := glsl.mat4LookAt(vec3{2,2,2}, vec3{0,0,0}, vec3{0,1,0})
+        proj     := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
+        projview := proj * view
 
-        gl.UniformMatrix4fv(m_loc, 1, gl.FALSE, mat4_to_gl(&model))
-        gl.UniformMatrix4fv(v_loc, 1, gl.FALSE, mat4_to_gl(&view))
-        gl.UniformMatrix4fv(p_loc, 1, gl.FALSE, mat4_to_gl(&proj))
+        gl.UniformMatrix4fv(pv_loc, 1, gl.FALSE, mat4_to_gl(&projview))
 
         gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS) * 6)
 
         glfw.SwapBuffers(window_handle)
 
+        //// MISC
         fmt.printf("%d FPS\n", i32(1/delta))
     }
 }
 
-fbcb_size :: proc "c" (window: glfw.WindowHandle, width,height: i32) {
-    gl.Viewport(0,0,width,height)
-    win_width  = width
-    win_height = height
-}
 
 proc_inp :: proc(window: glfw.WindowHandle) {
     if glfw.GetKey(window, glfw.KEY_ESCAPE) == glfw.PRESS {
@@ -148,72 +146,84 @@ proc_inp :: proc(window: glfw.WindowHandle) {
     }
 }
 
-load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
-    data, ok := os.read_entire_file(path)
-    if !ok {
-        fmt.eprintf("failed to load shader! (%s)\n", path)
-        return ""
-    } defer delete(data)
+////////////// HELPER FUNCTIONS
 
-    str := string(data)
-    
-    if includes != nil {
-        ver := ""
-        arrostr: [dynamic]string
-
-        for line in strings.split_lines_iterator(&str) {
-            if ver != "" {
-                append(&arrostr, line)
-                append(&arrostr, "\n")
-                continue
-            }   ver = line
+        fbcb_size :: proc "c" (window: glfw.WindowHandle, width,height: i32) {
+            gl.Viewport(0,0,width,height)
+            win_width  = width
+            win_height = height
         }
 
-        ostr := strings.concatenate(arrostr[:])
-
-        toconc: [dynamic]string
-
-        for i in 0..<len(includes) {
-            append(&toconc, cast(string)load_shader_src(includes[i]))
+        add_cube :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32) {
+            for i in 0..<6 {
+                vtx: i32 = (x | y << 6 | z << 12 | i32(i) << 18)
+                append(SSBO_VERTS, vtx)
+            }
         }
 
-        toincl := strings.concatenate(toconc[:])
+        mat4_to_gl :: proc(mat: ^glsl.mat4) -> [^]f32 {
+            // magic function
+            return transmute([^]f32)mat
+        }
 
-        str = strings.concatenate([]string{ver, toincl, ostr})
-    }
 
-    return strings.clone_to_cstring(str)
-}
+/////////////// BIG HELPER FUNCTIONS
 
-load_shader :: proc(type: u32, path: string, include: []string = nil) -> u32 {
-    src := load_shader_src(path, include)
+        load_shader :: proc(type: u32, path: string, include: []string = nil) -> u32 {
+            src := load_shader_src(path, include)
 
-    shad: u32                          
-    shad = gl.CreateShader(type)           
-    gl.ShaderSource(shad, 1, &src, nil)            
-    gl.CompileShader(shad)
+            shad: u32                          
+            shad = gl.CreateShader(type)           
+            gl.ShaderSource(shad, 1, &src, nil)            
+            gl.CompileShader(shad)
 
-    succ: i32
-    gl.GetShaderiv(shad, gl.COMPILE_STATUS, &succ)
-    if !bool(succ) {
-        fmt.eprintf("shader compilation failed! (%s)\n", path)
-        log: [512]u8
-        gl.GetShaderInfoLog(shad, 512, nil, &log[0])
-        fmt.eprintln(string(log[:]))
-        return 0
-    }
+            succ: i32
+            gl.GetShaderiv(shad, gl.COMPILE_STATUS, &succ)
+            if !bool(succ) {
+                fmt.eprintf("shader compilation failed! (%s)\n", path)
+                log: [512]u8
+                gl.GetShaderInfoLog(shad, 512, nil, &log[0])
+                fmt.eprintln(string(log[:]))
+                return 0
+            }
 
-    return shad
-}
+            return shad
+        }
 
-add_cube :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32) {
-    for i in 0..<6 {
-        vtx: i32 = (x | y << 6 | z << 12 | i32(i) << 18)
-        append(SSBO_VERTS, vtx)
-    }
-}
+        load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
+            data, ok := os.read_entire_file(path)
+            if !ok {
+                fmt.eprintf("failed to load shader! (%s)\n", path)
+                return ""
+            } defer delete(data)
 
-mat4_to_gl :: proc(mat: ^glsl.mat4) -> [^]f32 {
-    // magic function
-    return transmute([^]f32)mat
-}
+            str := string(data)
+            
+            if includes != nil {
+                ver := ""
+                arrostr: [dynamic]string
+
+                for line in strings.split_lines_iterator(&str) {
+                    if ver != "" {
+                        append(&arrostr, line)
+                        append(&arrostr, "\n")
+                        continue
+                    }   ver = line
+                }
+
+                ostr := strings.concatenate(arrostr[:])
+
+                toconc: [dynamic]string
+
+                for i in 0..<len(includes) {
+                    append(&toconc, cast(string)load_shader_src(includes[i]))
+                }
+
+                toincl := strings.concatenate(toconc[:])
+
+                str = strings.concatenate([]string{ver, toincl, ostr})
+            }
+
+            return strings.clone_to_cstring(str)
+        }
+
