@@ -11,114 +11,43 @@ import gl "vendor:OpenGL"
 
 vec3 :: glsl.vec3
 
+//// BACKEND
 win_width: i32  = 800
 win_height: i32 = 600
 
 GL_VERSION_MAJOR :: 4
 GL_VERSION_MINOR :: 6
 
+//// CAMERA SYSTEM
+camera_pos: vec3
+
 main :: proc() {
-    ////// LOAD GLFW AND OPENGL
-        if !bool(glfw.Init()) {
-            fmt.eprint("glfw failed to init!")
-            return
-        }
+    window_handle := init_glfw_and_window()
+    if window_handle == nil { fmt.eprintln("failed to init glfw!"); return }
 
-        window_handle := glfw.CreateWindow(win_width, win_height, "hi", nil, nil)
+    defer glfw.Terminate()
+    defer glfw.DestroyWindow(window_handle)
 
-        defer glfw.Terminate()
-        defer glfw.DestroyWindow(window_handle)
+    shad_prog, succ := load_shaders()
+    if !succ { fmt.eprintln("failed to load shaders!"); return }
 
-        if window_handle == nil {
-            fmt.eprint("failed to create window!")
-            return
-        }
+    defer gl.DeleteProgram(shad_prog)
 
-        glfw.MakeContextCurrent(window_handle)
-        glfw.SwapInterval(0)
-        glfw.SetFramebufferSizeCallback(window_handle, fbcb_size)
+    VAO, SSBO_VERTS := gen_buffers(shad_prog)
 
-        gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, proc(p: rawptr, name: cstring) {
-            (^rawptr)(p)^ = glfw.GetProcAddress(name)
-        })
-
-        gl.Viewport(0,0,win_width,win_height)
-    ////// a
-
-    ///// LOAD SHADERS
-        vert_shad := load_shader(gl.VERTEX_SHADER, "assets/shaders/base.vert")
-        frag_shad := load_shader(gl.FRAGMENT_SHADER, "assets/shaders/base.frag", []string{ "assets/shaders/fnl.glsl" })        
-
-        if vert_shad == 0 { return }
-        if frag_shad == 0 { return }
-
-        shad_succ: i32
-        shad_prog: u32
-        shad_prog = gl.CreateProgram(); defer gl.DeleteProgram(shad_prog)
-        gl.AttachShader(shad_prog, vert_shad)
-        gl.AttachShader(shad_prog, frag_shad)
-        gl.LinkProgram(shad_prog)
-
-        gl.DeleteShader(vert_shad)
-        gl.DeleteShader(frag_shad)
-
-        gl.GetProgramiv(shad_prog, gl.LINK_STATUS, &shad_succ)
-        if !bool(shad_succ) {
-            fmt.eprintln("SHADER PROGRAM LINKING FAILED\n")
-            log: [512]u8
-            gl.GetProgramInfoLog(shad_prog, 512, nil, &log[0])
-            fmt.eprintln(string(log[:]))
-            return
-        }
-    ////// a
-
-    ////// BUFFERS (i think)
-        VAO: u32
-        gl.GenVertexArrays(1, &VAO)
-        gl.BindVertexArray(VAO)
-
-        SSBO: u32
-        gl.CreateBuffers(1, &SSBO)
-
-        SSBO_VERTS: [dynamic]i32
-    
-        add_cube(&SSBO_VERTS, 0,0,0)
-        add_cube(&SSBO_VERTS, 0,1,0)
-        add_cube(&SSBO_VERTS, 1,0,0)
-        add_cube(&SSBO_VERTS, 0,0,1)
-
-        gl.UseProgram(shad_prog)
-
-        gl.NamedBufferStorage(SSBO, len(SSBO_VERTS) * size_of(i32), &SSBO_VERTS[0], gl.NONE)
-        gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)
-
-        gl.UseProgram(0)
-    ////// a
-
-    ////// ENABLING STUFF
-        gl.Enable(gl.DEPTH_TEST)
-
-        gl.Enable(gl.CULL_FACE)
-        gl.CullFace(gl.BACK)
-        gl.FrontFace(gl.CW)
-    ////// a
+    enable_gl()
 
     lastTime: f64;
-
     for !glfw.WindowShouldClose(window_handle) {
-        //// DELTA TIME
-        delta := glfw.GetTime() - lastTime;
-        lastTime = glfw.GetTime()
+        delta := get_delta(&lastTime)
 
-        //// INPUTS
         proc_inp(window_handle)
         glfw.PollEvents()
 
-        //// CLEARING
         gl.ClearColor(0.2, 0.3, 0.3, 1)
         gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-        //// RENDERING THE SCENE
+
         gl.UseProgram(shad_prog)
         gl.BindVertexArray(VAO)
 
@@ -134,7 +63,7 @@ main :: proc() {
 
         glfw.SwapBuffers(window_handle)
 
-        //// MISC
+
         fmt.printf("%d FPS\n", i32(1/delta))
     }
 }
@@ -169,8 +98,9 @@ proc_inp :: proc(window: glfw.WindowHandle) {
 
 /////////////// BIG HELPER FUNCTIONS
 
-        load_shader :: proc(type: u32, path: string, include: []string = nil) -> u32 {
-            src := load_shader_src(path, include)
+        load_shader :: proc(type: u32, path: string, include: []string = nil) -> (u32, bool) {
+            src, src_succ := load_shader_src(path, include)
+            if !src_succ { fmt.eprintf("failed to load shader source! (%s)\n", path); return 0, false }
 
             shad: u32                          
             shad = gl.CreateShader(type)           
@@ -184,17 +114,17 @@ proc_inp :: proc(window: glfw.WindowHandle) {
                 log: [512]u8
                 gl.GetShaderInfoLog(shad, 512, nil, &log[0])
                 fmt.eprintln(string(log[:]))
-                return 0
+                return 0, false
             }
 
-            return shad
+            return shad, true
         }
 
-        load_shader_src :: proc(path: string, includes: []string = nil) -> cstring {
+        load_shader_src :: proc(path: string, includes: []string = nil) -> (cstring, bool) {
             data, ok := os.read_entire_file(path)
             if !ok {
                 fmt.eprintf("failed to load shader! (%s)\n", path)
-                return ""
+                return "", false
             } defer delete(data)
 
             str := string(data)
@@ -215,8 +145,10 @@ proc_inp :: proc(window: glfw.WindowHandle) {
 
                 toconc: [dynamic]string
 
-                for i in 0..<len(includes) {
-                    append(&toconc, cast(string)load_shader_src(includes[i]))
+                for i in 0..<len(includes) { 
+                    ssrc, s_succ := load_shader_src(includes[i])
+                    if !s_succ { fmt.eprintf("failed to load include shader! (%s)\n", includes[i]); return "", false }
+                    append(&toconc, cast(string)ssrc) 
                 }
 
                 toincl := strings.concatenate(toconc[:])
@@ -224,6 +156,110 @@ proc_inp :: proc(window: glfw.WindowHandle) {
                 str = strings.concatenate([]string{ver, toincl, ostr})
             }
 
-            return strings.clone_to_cstring(str)
+            return strings.clone_to_cstring(str), true
         }
 
+
+
+
+
+
+
+////// BACKEND
+init_glfw_and_window :: proc() -> glfw.WindowHandle {
+    if !bool(glfw.Init()) {
+        fmt.eprint("glfw failed to init!")
+        return nil
+    }
+
+    window_handle := glfw.CreateWindow(win_width, win_height, "hi", nil, nil)
+
+    // defer glfw.Terminate()
+    // defer glfw.DestroyWindow(window_handle)
+
+    if window_handle == nil {
+        fmt.eprint("failed to create window!")
+        return nil
+    }
+
+    glfw.MakeContextCurrent(window_handle)
+    glfw.SwapInterval(0)
+    glfw.SetFramebufferSizeCallback(window_handle, fbcb_size)
+
+    gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, proc(p: rawptr, name: cstring) {
+        (^rawptr)(p)^ = glfw.GetProcAddress(name)
+    })
+
+    gl.Viewport(0,0,win_width,win_height)
+
+    return window_handle
+}
+
+load_shaders :: proc() -> (u32, bool) {
+    vert_shad, v_succ := load_shader(gl.VERTEX_SHADER, "assets/shaders/base.vert")
+    frag_shad, f_succ := load_shader(gl.FRAGMENT_SHADER, "assets/shaders/base.frag", []string{ "assets/shaders/fnl.glsl" })        
+
+    if !v_succ { return 0, false }
+    if !f_succ { return 0, false }
+
+    shad_succ: i32
+    shad_prog: u32
+    shad_prog = gl.CreateProgram() 
+    gl.AttachShader(shad_prog, vert_shad)
+    gl.AttachShader(shad_prog, frag_shad)
+    gl.LinkProgram(shad_prog)
+
+    gl.DeleteShader(vert_shad)
+    gl.DeleteShader(frag_shad)
+
+    gl.GetProgramiv(shad_prog, gl.LINK_STATUS, &shad_succ)
+    if !bool(shad_succ) {
+        fmt.eprintln("failed to link shader program!")
+        log: [512]u8
+        gl.GetProgramInfoLog(shad_prog, 512, nil, &log[0])
+        fmt.eprintln(string(log[:]))
+        return 0, false
+    }
+
+    return shad_prog, true
+}
+
+gen_buffers :: proc(shad_prog: u32) -> (u32, [dynamic]i32) {
+    VAO: u32
+    gl.GenVertexArrays(1, &VAO)
+    gl.BindVertexArray(VAO)
+
+    SSBO: u32
+    gl.CreateBuffers(1, &SSBO)
+
+    SSBO_VERTS: [dynamic]i32
+
+    add_cube(&SSBO_VERTS, 0,0,0)
+    add_cube(&SSBO_VERTS, 0,1,0)
+    add_cube(&SSBO_VERTS, 1,0,0)
+    add_cube(&SSBO_VERTS, 0,0,1)
+
+    gl.UseProgram(shad_prog)
+
+    gl.NamedBufferStorage(SSBO, len(SSBO_VERTS) * size_of(i32), &SSBO_VERTS[0], gl.NONE)
+    gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)
+
+    gl.UseProgram(0)
+
+    return VAO, SSBO_VERTS
+}
+
+enable_gl :: proc() {
+    gl.Enable(gl.DEPTH_TEST)
+
+    gl.Enable(gl.CULL_FACE)
+    gl.CullFace(gl.BACK)
+    gl.FrontFace(gl.CW)
+}
+
+get_delta :: proc(lastTime: ^f64) -> f64 {
+    delta := glfw.GetTime() - lastTime^;
+    lastTime^ = glfw.GetTime()
+
+    return delta
+}
