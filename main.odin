@@ -250,7 +250,7 @@ proc_inp :: proc(window: glfw.WindowHandle) {
         // 4 -> top
         // 5 -> bottom
         add_face :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32, normal: u8) {
-            vtx: i32 = (x | y << 6 | z << 12 | i32(normal) << 18)
+            vtx: i32 = (x | y << 5 | z << 10 | i32(normal) << 15)
             append(SSBO_VERTS, vtx)
         }
 

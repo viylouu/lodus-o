@@ -23,12 +23,12 @@ void main() {
     int packdata = data[index];
     int cVertexID = gl_VertexID % 6;
 
-    int x = (packdata) & 0x3F;
-    int y = (packdata >> 6) & 0x3F;
-    int z = (packdata >> 12) & 0x3F;
+    int x = (packdata) & 0x1F;
+    int y = (packdata >> 5) & 0x1F;
+    int z = (packdata >> 10) & 0x1F;
     vec3 pos = vec3(x,y,z);
 
-    int normal = (packdata >> 18) & 0x7;
+    int normal = (packdata >> 15) & 0x7;
 
     pos += facePosses[cVertexID + normal * 6];
 

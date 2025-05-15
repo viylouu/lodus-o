@@ -40,20 +40,20 @@ void main() {
 
     vec3 rPos = fPos;
     if (texSize != 0) {
-        rPos = floor(rPos * texSize) / texSize;
-    }
+        vec3 eps = vec3(0.00001);
+        vec3 off = vec3(0);
+        switch(norm) {
+            case 0: off = vec3(0,0,1);  break;
+            case 1: off = vec3(0,0,-1); break;
+            case 2: off = vec3(-1,0,0); break;
+            case 3: off = vec3(1,0,0);  break;
+            case 4: off = vec3(0,1,0);  break;
+            case 5: off = vec3(0,-1,0); break;
+        }
 
-    // fix for werid "clipping" issues
-    switch(norm) {
-        case 0:
-        case 1:
-            rPos.z = fPos.z; break;
-        case 2:
-        case 3:
-            rPos.x = fPos.x; break;
-        case 4:
-        case 5:
-            rPos.y = fPos.y; break;
+        rPos -= off * eps;
+
+        rPos = floor(rPos * texSize) / texSize;
     }
 
     float n = fnlGetNoise3D(noise, rPos.x,rPos.y,rPos.z) *.5+.5;
