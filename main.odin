@@ -3,12 +3,15 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:strconv"
 import "core:math"
 import "core:math/linalg"
 import "core:math/linalg/glsl"
 
 import fnl "libs/fastnoiselite"
-import gui "libs/imgui"
+import im "libs/imgui"
+import imgl "libs/imgui/opengl3"
+import imfw "libs/imgui/glfw"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
@@ -34,6 +37,9 @@ first_mouse: bool = true
 
 last_mouse_x, last_mouse_y: f32
 
+in_focus: bool = false
+focusing: bool
+
 //// GLOBALS
 delta: f64
 
@@ -45,6 +51,9 @@ main :: proc() {
 
     defer glfw.Terminate()
     defer glfw.DestroyWindow(window_handle)
+    defer im.DestroyContext()
+    defer imfw.Shutdown()
+    defer imgl.Shutdown()
 
     shad_prog, succ := load_shaders()
     if !succ { fmt.eprintln("failed to load shaders!"); return }
@@ -61,8 +70,6 @@ main :: proc() {
         gl.Uniform1f(ts_loc, tex_size)
 
     gl.UseProgram(0)
-
-    gui.InitForOpenGL(window_handle, true)
 
     lastTime: f64;
     for !glfw.WindowShouldClose(window_handle) {
@@ -88,10 +95,25 @@ main :: proc() {
 
         gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS) * 6)
 
+
+        imgl.NewFrame()
+        imfw.NewFrame()
+        im.NewFrame()
+
+        if im.Begin("MAIN") {
+            buf: [6]u8
+            im.Text(strings.clone_to_cstring(strings.concatenate([]string{ strconv.append_int(buf[:], i64(1/delta), 10), " FPS" })))
+
+        }   im.End() 
+
+        im.Render()
+
+        imgl.RenderDrawData(im.GetDrawData())
+
         glfw.SwapBuffers(window_handle)
 
 
-        fmt.printf("%d FPS\n", i32(1/delta))
+        //fmt.printf("%d FPS\n", i32(1/delta))
     }
 }
 
@@ -99,26 +121,39 @@ main :: proc() {
 proc_inp :: proc(window: glfw.WindowHandle) {
     if glfw.GetKey(window, glfw.KEY_ESCAPE) == glfw.PRESS { glfw.SetWindowShouldClose(window, true) }
     
-    speed: f32 = 4
+    if in_focus {
+        speed: f32 = 4
 
-    camera_right := glsl.normalize(glsl.cross(camera_front, camera_up))
+        camera_right := glsl.normalize(glsl.cross(camera_front, camera_up))
 
-    if glfw.GetKey(window, glfw.KEY_W) == glfw.PRESS          { camera_pos -= glsl.cross(camera_right, camera_up) * f32(delta) * speed }
-    if glfw.GetKey(window, glfw.KEY_S) == glfw.PRESS          { camera_pos += glsl.cross(camera_right, camera_up) * f32(delta) * speed }
-    if glfw.GetKey(window, glfw.KEY_A) == glfw.PRESS          { camera_pos -= camera_right * f32(delta) * speed }
-    if glfw.GetKey(window, glfw.KEY_D) == glfw.PRESS          { camera_pos += camera_right * f32(delta) * speed }
-    if glfw.GetKey(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS { camera_pos.y -= f32(delta) * speed }
-    if glfw.GetKey(window, glfw.KEY_SPACE) == glfw.PRESS      { camera_pos.y += f32(delta) * speed }
+        if glfw.GetKey(window, glfw.KEY_W) == glfw.PRESS          { camera_pos -= glsl.cross(camera_right, camera_up) * f32(delta) * speed }
+        if glfw.GetKey(window, glfw.KEY_S) == glfw.PRESS          { camera_pos += glsl.cross(camera_right, camera_up) * f32(delta) * speed }
+        if glfw.GetKey(window, glfw.KEY_A) == glfw.PRESS          { camera_pos -= camera_right * f32(delta) * speed }
+        if glfw.GetKey(window, glfw.KEY_D) == glfw.PRESS          { camera_pos += camera_right * f32(delta) * speed }
+        if glfw.GetKey(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS { camera_pos.y -= f32(delta) * speed }
+        if glfw.GetKey(window, glfw.KEY_SPACE) == glfw.PRESS      { camera_pos.y += f32(delta) * speed }
 
-    if camera_pitch > 89.9  { camera_pitch = 89.9  }
-    if camera_pitch < -89.9 { camera_pitch = -89.9 }
+        glfw.SetInputMode(window, glfw.CURSOR, glfw.CURSOR_DISABLED)
 
-    dir: vec3
-    dir.x = math.cos_f32(linalg.to_radians(camera_yaw)) * math.cos_f32(linalg.to_radians(camera_pitch))
-    dir.z = math.sin_f32(linalg.to_radians(camera_yaw)) * math.cos_f32(linalg.to_radians(camera_pitch))
-    dir.y = math.sin_f32(linalg.to_radians(camera_pitch))
-    camera_front = glsl.normalize(dir)
+        if camera_pitch > 89.9  { camera_pitch = 89.9  }
+        if camera_pitch < -89.9 { camera_pitch = -89.9 }
 
+        dir: vec3
+        dir.x = math.cos_f32(linalg.to_radians(camera_yaw)) * math.cos_f32(linalg.to_radians(camera_pitch))
+        dir.z = math.sin_f32(linalg.to_radians(camera_yaw)) * math.cos_f32(linalg.to_radians(camera_pitch))
+        dir.y = math.sin_f32(linalg.to_radians(camera_pitch))
+        camera_front = glsl.normalize(dir)
+    } else {
+        glfw.SetInputMode(window, glfw.CURSOR, glfw.CURSOR_NORMAL)
+
+        first_mouse = true
+    }
+
+    if glfw.GetKey(window, glfw.KEY_TAB) == glfw.PRESS { 
+        if !focusing {
+            in_focus = !in_focus 
+        }   focusing = true
+    } else { focusing = false }
 }
 
 
@@ -314,12 +349,20 @@ init_glfw_and_window :: proc() -> glfw.WindowHandle {
     glfw.MakeContextCurrent(window_handle)
     glfw.SwapInterval(0)
     glfw.SetFramebufferSizeCallback(window_handle, fbcb_size)
-    glfw.SetInputMode(window_handle, glfw.CURSOR, glfw.CURSOR_DISABLED)
     glfw.SetCursorPosCallback(window_handle, cpcb)
 
     gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, proc(p: rawptr, name: cstring) {
         (^rawptr)(p)^ = glfw.GetProcAddress(name)
     })
+
+    im.CHECKVERSION()
+    im.CreateContext()
+    //io := im.GetIO()
+
+    im.StyleColorsDark()
+
+    imfw.InitForOpenGL(window_handle, true)
+    imgl.Init("#version 450")
 
     gl.Viewport(0,0,win_width,win_height)
 
