@@ -62,14 +62,13 @@ main :: proc() {
 
     VAO, SSBO_VERTS := gen_buffers(shad_prog)
 
+    defer delete_dynamic_array(SSBO_VERTS)
+
     enable_gl()
 
-    gl.UseProgram(shad_prog)
-
-        ts_loc := gl.GetUniformLocation(shad_prog, "texSize")
-        gl.Uniform1f(ts_loc, tex_size)
-
-    gl.UseProgram(0)
+    pv_loc := gl.GetUniformLocation(shad_prog, "projview")
+    ts_loc := gl.GetUniformLocation(shad_prog, "texSize")
+    cp_loc := gl.GetUniformLocation(shad_prog, "camPos")
 
     lastTime: f64;
     for !glfw.WindowShouldClose(window_handle) {
@@ -84,8 +83,9 @@ main :: proc() {
 
         gl.UseProgram(shad_prog)
         gl.BindVertexArray(VAO)
-
-        pv_loc   := gl.GetUniformLocation(shad_prog, "projview")
+        
+        gl.Uniform3f(cp_loc, camera_pos.x, camera_pos.y, camera_pos.z)
+        gl.Uniform1f(ts_loc, tex_size)
 
         view     := glsl.mat4LookAt(camera_pos, camera_pos + camera_front, camera_up)
         proj     := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
@@ -104,6 +104,10 @@ main :: proc() {
             buf: [6]u8
             im.Text(strings.clone_to_cstring(strings.concatenate([]string{ strconv.append_int(buf[:], i64(1/delta), 10), " FPS" })))
 
+            tres := i32(tex_size)
+            im.SliderInt("tex resolution", &tres, 0, 64, "%d")
+            tex_size = f32(tres)
+
         }   im.End() 
 
         im.Render()
@@ -111,9 +115,6 @@ main :: proc() {
         imgl.RenderDrawData(im.GetDrawData())
 
         glfw.SwapBuffers(window_handle)
-
-
-        //fmt.printf("%d FPS\n", i32(1/delta))
     }
 }
 
@@ -159,17 +160,17 @@ proc_inp :: proc(window: glfw.WindowHandle) {
 
 ////////////// WORLD GENERATION
 
-        gen_chunk :: proc(SV: ^[dynamic]i32) {
+        gen_chunk :: proc(SV: ^[dynamic]i32, i,j,k: int) {
             noise := fnl.create_state(0)
             noise.frequency = 0.05
             noise.noise_type = fnl.Noise_Type.Perlin
 
-            dat: [32][32][32]bool
+            dat:= new([32][32][32]bool)
 
             for x in 0..<32 {
                 for z in 0..<32 {
                     for y in 0..<32 {
-                        if y > int(f32(fnl.get_noise_2d(noise, f32(x),f32(z)) * 12 + 16)) { continue }
+                        if y > int(f32(fnl.get_noise_2d(noise, f32(x + i*32),f32(z + k*32)) * 12 + 16)) { continue }
 
                         dat[x][y][z] = true
                     }
@@ -408,7 +409,7 @@ gen_buffers :: proc(shad_prog: u32) -> (u32, [dynamic]i32) {
 
     SSBO_VERTS: [dynamic]i32
 
-    gen_chunk(&SSBO_VERTS)
+    gen_chunk(&SSBO_VERTS, 0,0,0)
 
     gl.UseProgram(shad_prog)
 
