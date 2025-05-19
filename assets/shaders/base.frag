@@ -4,9 +4,11 @@
 #define BLENDMODE_SUB 1
 #define BLENDMODE_MUL 2
 #define BLENDMODE_DIV 3
+#define BLENDMODE_MIX 4
 
 uniform float texSize;
 uniform vec3 camPos;
+uniform int seed;
 
 in vec3 fPos;
 flat in int norm;
@@ -25,8 +27,11 @@ struct texLayer {
     vec4 col_light;
     float contrast;
     float frequency;
+    int fractal;
+    int octaves;
     int blend;
     int noise;
+    int seed_off;
 };
 
 layout(binding = 1, std430) readonly buffer TSSBO {
@@ -44,28 +49,37 @@ void main() {
 
     vec3 final = vec3(0);
 
+    bool domix;
+    vec3 mixn; 
+    vec3 mixp;
+
     for (int i = 0; i < t.layers; i++) {
         texLayer l = lays[t.layerSI + i];
 
-        noise.noise_type = FNL_NOISE_PERLIN;
-        noise.fractal_type = FNL_FRACTAL_FBM;
-        noise.frequency = 2.85;
+        noise.noise_type = l.noise;
+        noise.fractal_type = l.fractal;
+        noise.frequency = l.frequency;
+        noise.seed = l.seed_off + seed;
 
-        float dist = distance(camPos, fPos);
+        if (l.fractal != FNL_FRACTAL_NONE && l.octaves > 0) {
+            float dist = distance(camPos, fPos);
 
-        float scale = scale_based_on_tex_size(texSize);
-        int steps = int(ceil(scale));
+            float scale = scale_based_on_tex_size(texSize);
+            int steps = int(ceil(scale));
 
-        if(texSize == 0) {
-            steps = 8;
-        }
+            if(texSize == 0) {
+                steps = 0;
+            }
 
-        noise.octaves = 1;
-        
-        for (int j = 0; j < steps; j++) {
-            if (dist < 6 * pow(3, j-1)) {
-                noise.octaves = steps - j;
-                break;
+            steps += l.octaves;
+
+            noise.octaves = 1;
+            
+            for (int j = 0; j < steps; j++) {
+                if (dist < 4 * pow(3, j-1) + 8) {
+                    noise.octaves = steps - j;
+                    break;
+                }
             }
         }
         
@@ -93,6 +107,17 @@ void main() {
 
         vec3 col = mix(l.col_dark.rgb, l.col_light.rgb, n);
 
+        if (domix) {
+            domix = false;
+            col = mix(mixp, col, mixn);
+        }
+
+        if(i != t.layers-1) {
+            if(lays[t.layerSI + i + 1].blend == BLENDMODE_MIX) {
+                mixp = col;
+            }
+        }
+
         switch(l.blend) {
             case BLENDMODE_ADD:
                 final += col; break;
@@ -102,6 +127,13 @@ void main() {
                 final *= col; break;
             case BLENDMODE_DIV:
                 final /= max(col, vec3(0.00001)); break;
+            case BLENDMODE_MIX:
+                if (i != 0 && i != t.layers-1) {
+                    domix = true;
+                    mixn = col;
+                } else {
+                    final = vec3(1,0,1);
+                }
         }
     }
 

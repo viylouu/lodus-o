@@ -74,7 +74,8 @@ blendMode :: enum {
     add,
     sub,
     mul,
-    div
+    div,
+    mix
 }
 
 texLayer :: struct #align(16) { 
@@ -82,8 +83,11 @@ texLayer :: struct #align(16) {
     col_light: vec4,
     contrast:  f32,
     frequency: f32,
+    fractal:   i32,
+    octaves:   i32,
     blend:     i32,
-    noise:     i32
+    noise:     i32,
+    seed_off:  i32
 }
 
 textures:  [dynamic]texture
@@ -122,7 +126,7 @@ main :: proc() {
     cp_loc := gl.GetUniformLocation(shad_prog, "camPos")
     md_loc := gl.GetUniformLocation(shad_prog, "model")
     bi_loc := gl.GetUniformLocation(shad_prog, "bind")
-
+    sd_loc := gl.GetUniformLocation(shad_prog, "seed")
     tx_loc := gl.GetUniformLocation(shad_prog, "textures")
 
     TSSBO: u32
@@ -134,8 +138,8 @@ main :: proc() {
     texs := textures[:]
     lays := texlayers[:]
 
-    gl.NamedBufferStorage(TSSBO, len(textures) * size_of(texture), &texs[0], 0)     // use DYNAMIC_STORAGE_BIT later when updating
-    gl.NamedBufferStorage(LSSBO, len(texlayers) * size_of(texLayer), &lays[0], 0)  // use DYNAMIC_STORAGE_BIT later when updating
+    gl.NamedBufferStorage(TSSBO, len(textures) * size_of(texture), &texs[0], gl.DYNAMIC_STORAGE_BIT)
+    gl.NamedBufferStorage(LSSBO, len(texlayers) * size_of(texLayer), &lays[0], gl.DYNAMIC_STORAGE_BIT)
 
     identity_mat := glsl.identity(glsl.mat4)
 
@@ -188,23 +192,75 @@ main :: proc() {
                 gl.UniformMatrix4fv(md_loc, 1, gl.FALSE, mat4_to_gl(&model))
                 gl.UniformMatrix4fv(pv_loc, 1, gl.FALSE, mat4_to_gl(&projview))
 
+                gl.NamedBufferSubData(TSSBO, 0, len(textures) * size_of(texture), &textures[0])
+                gl.NamedBufferSubData(LSSBO, 0, len(texlayers) * size_of(texLayer), &texlayers[0])
+
                 gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS_2) * 6)
 
                 if im.Begin("CREATOR") {
-                    t := textures[grass]
-                    for i in t.layerSI..<(t.layerSI+t.layers) {
-                        lay := texlayers[i]
+                    t := &textures[grass]
 
-                        if im.TreeNode("layer") {
-                            if im.TreeNode("colors") {
-                                lcol := lay.col_light.xyz
-                                dcol := lay.col_dark.xyz
+                    if im.Button("+ layer") {
+                        append(&texlayers, texLayer{ 
+                            col_dark =  vec4{0,0,0,1},
+                            col_light = vec4{1,1,1,1},
+                            contrast  = 1,
+                            frequency = 2,
+                            blend = i32(blendMode.add),
+                            noise = i32(fnl.Noise_Type.Open_Simplex_2),
+                            fractal = i32(fnl.Fractal_Type.None),
+                            octaves = 1,
+                            seed_off = 0
+                        })
+                        t^.layers += 1
 
-                                im.ColorPicker3("light", &lcol)
-                                im.ColorPicker3("dark",  &dcol)
+                        gl.DeleteBuffers(1, &LSSBO)
+                        gl.CreateBuffers(1, &LSSBO)
+                        gl.NamedBufferStorage(LSSBO, len(texlayers) * size_of(texLayer), &texlayers[0], gl.DYNAMIC_STORAGE_BIT)
+                    }
 
-                                lay.col_light = vec4{lcol.x,lcol.y,lcol.z,1}
-                                lay.col_dark = vec4{dcol.x,dcol.y,dcol.z,1}
+                    buf: [2]u8
+
+                    for i in t^.layerSI..<(t^.layerSI+t^.layers) {
+                        lay := &texlayers[i]
+
+                        if im.TreeNode(strings.clone_to_cstring(strings.concatenate([]string{ "layer", strconv.append_int(buf[:], i64(i), 10) }))) {
+                            if im.TreeNode("main") {
+                                noises := [6]cstring{ "opensimplex2", "opensimplex2 smoothed", "cellular (voronoi)", "perlin", "value smoothed", "value" }
+                                im.ComboChar("type", &lay^.noise, raw_data(noises[:]), 6)
+
+                                im.InputInt("seed offset", &lay^.seed_off)
+
+                                im.InputFloat("freq", &lay^.frequency, 0.05)
+
+                                blends := [5]cstring{ "add", "sub", "mul", "div", "mix" }
+                                im.ComboChar("blend", &lay^.blend, raw_data(blends[:]), 5)
+
+                                if im.TreeNode("colors") {
+                                    im.SliderFloat("contrast", &lay^.contrast, 0, 2)
+
+                                    lcol := lay^.col_light.rgb
+                                    dcol := lay^.col_dark.rgb
+
+                                    im.ColorPicker3("light", &lcol)
+                                    im.ColorPicker3("dark",  &dcol)
+
+                                    lay^.col_light = vec4{lcol.r,lcol.g,lcol.b,1}
+                                    lay^.col_dark = vec4{dcol.r,dcol.g,dcol.b,1}
+
+                                    im.TreePop()
+                                }
+
+                                im.TreePop()
+                            }
+
+                            if im.TreeNode("fractal") {
+                                fractals := [4]cstring{ "none", "fbm", "ridged", "pingpong" }
+                                im.ComboChar("type", &lay^.fractal, raw_data(fractals[:]), 4)
+
+                                if lay^.fractal != 0 {
+                                    im.InputInt("octaves", &lay^.octaves)
+                                }
 
                                 im.TreePop()
                             }
@@ -585,6 +641,9 @@ init_textures :: proc() {
         contrast  = 1.22,
         frequency = 2.85,
         blend = i32(blendMode.add),
-        noise = i32(fnl.Noise_Type.Perlin)
+        noise = i32(fnl.Noise_Type.Perlin),
+        fractal = i32(fnl.Fractal_Type.FBM),
+        octaves = 8,
+        seed_off = 0
     })
 }
