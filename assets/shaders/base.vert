@@ -1,6 +1,7 @@
 #version 460 core
 
 uniform mat4 projview;
+uniform mat4 model;
 
 layout(binding = 0, std430) readonly buffer SSBO { 
     int data[];
@@ -32,7 +33,7 @@ void main() {
 
     pos += facePosses[cVertexID + normal * 6];
 
-    gl_Position = projview * vec4(pos,1);
+    gl_Position = projview * model * vec4(pos,1);
 
     fPos = pos;
 

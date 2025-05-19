@@ -17,6 +17,19 @@ import "vendor:glfw"
 import gl "vendor:OpenGL"
 
 vec3 :: glsl.vec3
+vec4 :: glsl.vec4
+
+texIndex :: distinct int
+
+mode :: enum {
+    game,
+    menu,
+
+    block_creator
+}
+
+cur_mode: mode = mode.game
+
 
 //// BACKEND
 win_width: i32  = 800
@@ -24,6 +37,7 @@ win_height: i32 = 600
 
 GL_VERSION_MAJOR :: 4
 GL_VERSION_MINOR :: 6
+
 
 //// CAMERA SYSTEM
 camera_pos: vec3   = vec3{0,0,3}
@@ -40,10 +54,43 @@ last_mouse_x, last_mouse_y: f32
 in_focus: bool = false
 focusing: bool
 
+
 //// GLOBALS
 delta: f64
 
 tex_size: f32 = 8
+
+
+//// TEXTURES
+texture :: struct #align(16) {
+    layerSI: i32,
+    layers: i32,
+
+    _pad0: i32,
+    _pad1: i32
+}
+
+blendMode :: enum {
+    add,
+    sub,
+    mul,
+    div
+}
+
+texLayer :: struct #align(16) { 
+    col_dark:  vec4,
+    col_light: vec4,
+    contrast:  f32,
+    frequency: f32,
+    blend:     i32,
+    noise:     i32
+}
+
+textures:  [dynamic]texture
+texlayers: [dynamic]texLayer
+
+grass: texIndex
+
 
 main :: proc() {
     window_handle := init_glfw_and_window()
@@ -60,18 +107,41 @@ main :: proc() {
 
     defer gl.DeleteProgram(shad_prog)
 
-    VAO, SSBO_VERTS := gen_buffers(shad_prog)
+    VAO, SSBO, SSBO_VERTS     := gen_buffers()
+    SSBO_2, SSBO_VERTS_2 := gen_buffers_b()
 
     defer delete_dynamic_array(SSBO_VERTS)
+    defer delete_dynamic_array(SSBO_VERTS_2)
 
     enable_gl()
+
+    init_textures()
 
     pv_loc := gl.GetUniformLocation(shad_prog, "projview")
     ts_loc := gl.GetUniformLocation(shad_prog, "texSize")
     cp_loc := gl.GetUniformLocation(shad_prog, "camPos")
+    md_loc := gl.GetUniformLocation(shad_prog, "model")
+    bi_loc := gl.GetUniformLocation(shad_prog, "bind")
+
+    tx_loc := gl.GetUniformLocation(shad_prog, "textures")
+
+    TSSBO: u32
+    LSSBO: u32
+
+    gl.CreateBuffers(1, &TSSBO)
+    gl.CreateBuffers(1, &LSSBO)
+
+    texs := textures[:]
+    lays := texlayers[:]
+
+    gl.NamedBufferStorage(TSSBO, len(textures) * size_of(texture), &texs[0], 0)     // use DYNAMIC_STORAGE_BIT later when updating
+    gl.NamedBufferStorage(LSSBO, len(texlayers) * size_of(texLayer), &lays[0], 0)  // use DYNAMIC_STORAGE_BIT later when updating
+
+    identity_mat := glsl.identity(glsl.mat4)
 
     lastTime: f64;
     for !glfw.WindowShouldClose(window_handle) {
+        time := glfw.GetTime()
         delta = get_delta(&lastTime)
 
         proc_inp(window_handle)
@@ -80,29 +150,86 @@ main :: proc() {
         gl.ClearColor(0.2, 0.3, 0.3, 1)
         gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-
-        gl.UseProgram(shad_prog)
-        gl.BindVertexArray(VAO)
-        
-        gl.Uniform3f(cp_loc, camera_pos.x, camera_pos.y, camera_pos.z)
-        gl.Uniform1f(ts_loc, tex_size)
-
-        view     := glsl.mat4LookAt(camera_pos, camera_pos + camera_front, camera_up)
-        proj     := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
-        projview := proj * view
-
-        gl.UniformMatrix4fv(pv_loc, 1, gl.FALSE, mat4_to_gl(&projview))
-
-        gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS) * 6)
-
-
         imgl.NewFrame()
         imfw.NewFrame()
         im.NewFrame()
 
+        gl.UseProgram(shad_prog)
+        gl.BindVertexArray(VAO)
+
+        gl.Uniform1f(ts_loc, tex_size)
+
+        gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 1, TSSBO)
+        gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 2, LSSBO)
+
+        #partial switch cur_mode {
+            case mode.game:
+                gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)                                
+                gl.Uniform3f(cp_loc, camera_pos.x, camera_pos.y, camera_pos.z)
+                
+                view     := glsl.mat4LookAt(camera_pos, camera_pos + camera_front, camera_up)
+                proj     := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
+                projview := proj * view
+
+                gl.UniformMatrix4fv(md_loc, 1, gl.FALSE, mat4_to_gl(&identity_mat))
+                gl.UniformMatrix4fv(pv_loc, 1, gl.FALSE, mat4_to_gl(&projview))
+
+                gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS) * 6)
+
+            case mode.block_creator:
+                gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO_2)
+                gl.Uniform3f(cp_loc, 0,0,0)
+
+                model    := glsl.mat4Rotate(vec3{1,0,0}, linalg.to_radians(f32(45))) * glsl.mat4Rotate(vec3{0,1,0}, linalg.to_radians(f32(45))) * glsl.mat4Translate(vec3{-0.5,-0.5,-0.5})             
+                view     := glsl.mat4LookAt(vec3{0,0,2}, vec3{0,0,0}, vec3{0,1,0})
+                proj     := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
+                projview := proj * view
+
+                gl.UniformMatrix4fv(md_loc, 1, gl.FALSE, mat4_to_gl(&model))
+                gl.UniformMatrix4fv(pv_loc, 1, gl.FALSE, mat4_to_gl(&projview))
+
+                gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS_2) * 6)
+
+                if im.Begin("CREATOR") {
+                    t := textures[grass]
+                    for i in t.layerSI..<(t.layerSI+t.layers) {
+                        lay := texlayers[i]
+
+                        if im.TreeNode("layer") {
+                            if im.TreeNode("colors") {
+                                lcol := lay.col_light.xyz
+                                dcol := lay.col_dark.xyz
+
+                                im.ColorPicker3("light", &lcol)
+                                im.ColorPicker3("dark",  &dcol)
+
+                                lay.col_light = vec4{lcol.x,lcol.y,lcol.z,1}
+                                lay.col_dark = vec4{dcol.x,dcol.y,dcol.z,1}
+
+                                im.TreePop()
+                            }
+
+                            im.TreePop()
+                        }
+                    }
+
+                }   im.End()
+        }
+
         if im.Begin("MAIN") {
             buf: [6]u8
             im.Text(strings.clone_to_cstring(strings.concatenate([]string{ strconv.append_int(buf[:], i64(1/delta), 10), " FPS" })))
+
+            #partial switch cur_mode {
+                case mode.game:
+                    if im.Button("block creator") {
+                        cur_mode = mode.block_creator
+                    }
+                case mode.block_creator:
+                    if im.Button("game") {
+                        cur_mode = mode.game
+                    }
+            }
 
             tres := i32(tex_size)
             im.SliderInt("tex resolution", &tres, 0, 64, "%d")
@@ -164,6 +291,8 @@ proc_inp :: proc(window: glfw.WindowHandle) {
             noise := fnl.create_state(0)
             noise.frequency = 0.05
             noise.noise_type = fnl.Noise_Type.Perlin
+            noise.fractal_type = fnl.Fractal_Type.FBM
+            noise.octaves = 2
 
             dat:= new([32][32][32]bool)
 
@@ -237,7 +366,7 @@ proc_inp :: proc(window: glfw.WindowHandle) {
 
         add_cube :: proc(SSBO_VERTS: ^[dynamic]i32, x,y,z: i32) {
             for i in 0..<6 {
-                vtx: i32 = (x | y << 6 | z << 12 | i32(i) << 18)
+                vtx: i32 = (x | y << 5 | z << 10 | i32(i) << 15)
                 append(SSBO_VERTS, vtx)
             }
         }
@@ -339,9 +468,6 @@ init_glfw_and_window :: proc() -> glfw.WindowHandle {
 
     window_handle := glfw.CreateWindow(win_width, win_height, "hi", nil, nil)
 
-    // defer glfw.Terminate()
-    // defer glfw.DestroyWindow(window_handle)
-
     if window_handle == nil {
         fmt.eprint("failed to create window!")
         return nil
@@ -399,7 +525,7 @@ load_shaders :: proc() -> (u32, bool) {
     return shad_prog, true
 }
 
-gen_buffers :: proc(shad_prog: u32) -> (u32, [dynamic]i32) {
+gen_buffers :: proc() -> (u32, u32, [dynamic]i32) {
     VAO: u32
     gl.GenVertexArrays(1, &VAO)
     gl.BindVertexArray(VAO)
@@ -411,14 +537,26 @@ gen_buffers :: proc(shad_prog: u32) -> (u32, [dynamic]i32) {
 
     gen_chunk(&SSBO_VERTS, 0,0,0)
 
-    gl.UseProgram(shad_prog)
+    gl.NamedBufferStorage(SSBO, len(SSBO_VERTS) * size_of(i32), &SSBO_VERTS[0], 0)
 
-    gl.NamedBufferStorage(SSBO, len(SSBO_VERTS) * size_of(i32), &SSBO_VERTS[0], gl.NONE)
-    gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)
+    return VAO, SSBO, SSBO_VERTS
+}
 
-    gl.UseProgram(0)
+gen_buffers_b :: proc() -> (u32, [dynamic]i32) {
+    VAO: u32
+    gl.GenVertexArrays(1, &VAO)
+    gl.BindVertexArray(VAO)
 
-    return VAO, SSBO_VERTS
+    SSBO: u32
+    gl.CreateBuffers(1, &SSBO)
+
+    SSBO_VERTS: [dynamic]i32
+
+    add_cube(&SSBO_VERTS, 0,0,0)
+
+    gl.NamedBufferStorage(SSBO, len(SSBO_VERTS) * size_of(i32), &SSBO_VERTS[0], 0)
+
+    return SSBO, SSBO_VERTS
 }
 
 enable_gl :: proc() {
@@ -436,3 +574,17 @@ get_delta :: proc(lastTime: ^f64) -> f64 {
     return delta
 }
 
+init_textures :: proc() {
+    grass = texIndex(0)
+    
+    append(&textures, texture { layerSI = 0, layers = 1 })
+
+    append(&texlayers, texLayer {
+        col_dark  = vec4{49,105,61,256} / 256.0,
+        col_light = vec4{165,192,71,256} / 256.0,
+        contrast  = 1.22,
+        frequency = 2.85,
+        blend = i32(blendMode.add),
+        noise = i32(fnl.Noise_Type.Perlin)
+    })
+}
