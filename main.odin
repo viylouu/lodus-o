@@ -225,48 +225,53 @@ main :: proc() {
                         lay := &texlayers[i]
 
                         if im.TreeNode(strings.clone_to_cstring(strings.concatenate([]string{ "layer", strconv.append_int(buf[:], i64(i), 10) }))) {
-                            if im.TreeNode("main") {
-                                noises := [6]cstring{ "opensimplex2", "opensimplex2 smoothed", "cellular (voronoi)", "perlin", "value smoothed", "value" }
-                                im.ComboChar("type", &lay^.noise, raw_data(noises[:]), 6)
+                            continue
+                        }
 
-                                im.InputInt("seed offset", &lay^.seed_off)
+                        if im.TreeNode("main") {
+                            noises := [6]cstring{ "opensimplex2", "opensimplex2 smoothed", "cellular (voronoi)", "perlin", "value smoothed", "value" }
+                            im.ComboChar("type", &lay^.noise, raw_data(noises[:]), 6)
 
-                                im.InputFloat("freq", &lay^.frequency, 0.05)
+                            im.InputInt("seed offset", &lay^.seed_off)
 
+                            im.InputFloat("freq", &lay^.frequency, 0.05)
+
+                            if (i >= t^.layerSI+t^.layers-2) || (i < t^.layerSI+t^.layers-2 && texlayers[i+1].blend != i32(blendMode.mix)) {
                                 blends := [5]cstring{ "add", "sub", "mul", "div", "mix" }
                                 im.ComboChar("blend", &lay^.blend, raw_data(blends[:]), 5)
-
-                                if im.TreeNode("colors") {
-                                    im.SliderFloat("contrast", &lay^.contrast, 0, 2)
-
-                                    lcol := lay^.col_light.rgb
-                                    dcol := lay^.col_dark.rgb
-
-                                    im.ColorPicker3("light", &lcol)
-                                    im.ColorPicker3("dark",  &dcol)
-
-                                    lay^.col_light = vec4{lcol.r,lcol.g,lcol.b,1}
-                                    lay^.col_dark = vec4{dcol.r,dcol.g,dcol.b,1}
-
-                                    im.TreePop()
-                                }
-
-                                im.TreePop()
                             }
 
-                            if im.TreeNode("fractal") {
-                                fractals := [4]cstring{ "none", "fbm", "ridged", "pingpong" }
-                                im.ComboChar("type", &lay^.fractal, raw_data(fractals[:]), 4)
+                            if im.TreeNode("colors") {
+                                im.SliderFloat("contrast", &lay^.contrast, 0, 2)
 
-                                if lay^.fractal != 0 {
-                                    im.InputInt("octaves", &lay^.octaves)
-                                }
+                                lcol := lay^.col_light.rgb
+                                dcol := lay^.col_dark.rgb
+
+                                im.ColorPicker3("light", &lcol)
+                                im.ColorPicker3("dark",  &dcol)
+
+                                lay^.col_light = vec4{lcol.r,lcol.g,lcol.b,1}
+                                lay^.col_dark = vec4{dcol.r,dcol.g,dcol.b,1}
 
                                 im.TreePop()
                             }
 
                             im.TreePop()
-                        }
+                        }  /// main
+
+                        if im.TreeNode("fractal") {
+                            fractals := [4]cstring{ "none", "fbm", "ridged", "pingpong" }
+                            im.ComboChar("type", &lay^.fractal, raw_data(fractals[:]), 4)
+
+                            if lay^.fractal != 0 {
+                                im.InputInt("octaves", &lay^.octaves)
+                            }
+
+                            im.TreePop()
+                        }  /// fractal
+
+                        im.TreePop()
+                        
                     }
 
                 }   im.End()
