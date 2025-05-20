@@ -224,7 +224,7 @@ main :: proc() {
                     for i in t^.layerSI..<(t^.layerSI+t^.layers) {
                         lay := &texlayers[i]
 
-                        if im.TreeNode(strings.clone_to_cstring(strings.concatenate([]string{ "layer", strconv.append_int(buf[:], i64(i), 10) }))) {
+                        if !im.TreeNode(strings.clone_to_cstring(strings.concatenate([]string{ "layer", strconv.append_int(buf[:], i64(i), 10) }))) {
                             continue
                         }
 
