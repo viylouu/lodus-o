@@ -115,6 +115,7 @@ void main() {
         if(i != t.layers-1) {
             if(lays[t.layerSI + i + 1].blend == BLENDMODE_MIX) {
                 mixp = col;
+                continue;
             }
         }
 
