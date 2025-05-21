@@ -638,17 +638,41 @@ get_delta :: proc(lastTime: ^f64) -> f64 {
 init_textures :: proc() {
     grass = texIndex(0)
     
-    append(&textures, texture { layerSI = 0, layers = 1 })
+    append(&textures, texture { layerSI = 0, layers = 3 })
 
     append(&texlayers, texLayer {
-        col_dark  = vec4{49,105,61,256} / 256.0,
-        col_light = vec4{165,192,71,256} / 256.0,
-        contrast  = 1.22,
-        frequency = 2.85,
+        noise = i32(fnl.Noise_Type.Open_Simplex_2S),
+        seed_off = 0,
+        frequency = 2.5,
         blend = i32(blendMode.add),
-        noise = i32(fnl.Noise_Type.Perlin),
+        contrast = 1.13,
+        col_light = vec4{164,191,71,256} / 256.0,
+        col_dark = vec4{49,105,61,256} / 256.0,
         fractal = i32(fnl.Fractal_Type.FBM),
-        octaves = 8,
-        seed_off = 0
+        octaves = 3
+    })
+
+    append(&texlayers, texLayer {
+        noise = i32(fnl.Noise_Type.Open_Simplex_2S),
+        seed_off = 1,
+        frequency = 0.1,
+        blend = i32(blendMode.sub),
+        contrast = 1.994,
+        col_light = vec4{12,12,12,256} / 256.0,
+        col_dark = vec4{0,0,0,256} / 256.0,
+        fractal = i32(fnl.Fractal_Type.FBM),
+        octaves = 4
+    })
+
+    append(&texlayers, texLayer {
+        noise = i32(fnl.Noise_Type.Open_Simplex_2S),
+        seed_off = 2,
+        frequency = 0.1,
+        blend = i32(blendMode.add),
+        contrast = 1.913,
+        col_light = vec4{8,8,8,256} / 256.0,
+        col_dark = vec4{0,0,0,256} / 256.0,
+        fractal = i32(fnl.Fractal_Type.FBM),
+        octaves = 2
     })
 }

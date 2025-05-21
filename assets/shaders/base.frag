@@ -40,10 +40,6 @@ layout(binding = 1, std430) readonly buffer TSSBO {
     texLayer lays[];
 };
 
-float scale_based_on_tex_size(float x) {
-    return 2.2 * log(.7 * x + 1) + 1.3;
-}
-
 void main() {
     texture t = texs[0];
 
@@ -64,14 +60,7 @@ void main() {
         if (l.fractal != FNL_FRACTAL_NONE && l.octaves > 0) {
             float dist = distance(camPos, fPos);
 
-            float scale = scale_based_on_tex_size(texSize);
-            int steps = int(ceil(scale));
-
-            if(texSize == 0) {
-                steps = 0;
-            }
-
-            steps += l.octaves;
+            int steps = l.octaves;
 
             noise.octaves = 1;
             
