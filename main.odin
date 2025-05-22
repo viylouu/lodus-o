@@ -96,6 +96,16 @@ texlayers: [dynamic]texLayer
 grass: texIndex
 
 
+//// CHUNKS
+chunk :: struct {
+    data: [32][32][32]u8,
+    VAO, SSBO: u32,
+    SSBO_VERTS: [dynamic]i32
+}
+
+chunks: map[vec3]chunk
+
+
 main :: proc() {
     window_handle := init_glfw_and_window()
     if window_handle == nil { fmt.eprintln("failed to init glfw!"); return }
@@ -121,13 +131,12 @@ main :: proc() {
 
     init_textures()
 
-    pv_loc := gl.GetUniformLocation(shad_prog, "projview")
-    ts_loc := gl.GetUniformLocation(shad_prog, "texSize")
-    cp_loc := gl.GetUniformLocation(shad_prog, "camPos")
-    md_loc := gl.GetUniformLocation(shad_prog, "model")
-    bi_loc := gl.GetUniformLocation(shad_prog, "bind")
-    sd_loc := gl.GetUniformLocation(shad_prog, "seed")
-    tx_loc := gl.GetUniformLocation(shad_prog, "textures")
+    projview_loc := gl.GetUniformLocation(shad_prog, "projview")
+    texSize_loc := gl.GetUniformLocation(shad_prog, "texSize")
+    camPos_loc := gl.GetUniformLocation(shad_prog, "camPos")
+    model_loc := gl.GetUniformLocation(shad_prog, "model")
+    seed_loc := gl.GetUniformLocation(shad_prog, "seed")
+    textures_loc := gl.GetUniformLocation(shad_prog, "textures")
 
     TSSBO: u32
     LSSBO: u32
@@ -161,7 +170,7 @@ main :: proc() {
         gl.UseProgram(shad_prog)
         gl.BindVertexArray(VAO)
 
-        gl.Uniform1f(ts_loc, tex_size)
+        gl.Uniform1f(texSize_loc, tex_size)
 
         gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 1, TSSBO)
         gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 2, LSSBO)
@@ -169,28 +178,28 @@ main :: proc() {
         #partial switch cur_mode {
             case mode.game:
                 gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO)                                
-                gl.Uniform3f(cp_loc, camera_pos.x, camera_pos.y, camera_pos.z)
+                gl.Uniform3f(camPos_loc, camera_pos.x, camera_pos.y, camera_pos.z)
                 
                 view     := glsl.mat4LookAt(camera_pos, camera_pos + camera_front, camera_up)
                 proj     := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
                 projview := proj * view
 
-                gl.UniformMatrix4fv(md_loc, 1, gl.FALSE, mat4_to_gl(&identity_mat))
-                gl.UniformMatrix4fv(pv_loc, 1, gl.FALSE, mat4_to_gl(&projview))
+                gl.UniformMatrix4fv(model_loc, 1, gl.FALSE, mat4_to_gl(&identity_mat))
+                gl.UniformMatrix4fv(projview_loc, 1, gl.FALSE, mat4_to_gl(&projview))
 
                 gl.DrawArrays(gl.TRIANGLES, 0, cast(i32)len(SSBO_VERTS) * 6)
 
             case mode.block_creator:
                 gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, SSBO_2)
-                gl.Uniform3f(cp_loc, 0,0,0)
+                gl.Uniform3f(camPos_loc, 0,0,0)
 
                 model    := glsl.mat4Rotate(vec3{1,0,0}, linalg.to_radians(f32(45))) * glsl.mat4Rotate(vec3{0,1,0}, linalg.to_radians(f32(45))) * glsl.mat4Translate(vec3{-0.5,-0.5,-0.5})             
                 view     := glsl.mat4LookAt(vec3{0,0,2}, vec3{0,0,0}, vec3{0,1,0})
                 proj     := glsl.mat4PerspectiveInfinite(linalg.to_radians(f32(90)), f32(win_width)/f32(win_height), 0.1)
                 projview := proj * view
 
-                gl.UniformMatrix4fv(md_loc, 1, gl.FALSE, mat4_to_gl(&model))
-                gl.UniformMatrix4fv(pv_loc, 1, gl.FALSE, mat4_to_gl(&projview))
+                gl.UniformMatrix4fv(model_loc, 1, gl.FALSE, mat4_to_gl(&model))
+                gl.UniformMatrix4fv(projview_loc, 1, gl.FALSE, mat4_to_gl(&projview))
 
                 gl.NamedBufferSubData(TSSBO, 0, len(textures) * size_of(texture), &textures[0])
                 gl.NamedBufferSubData(LSSBO, 0, len(texlayers) * size_of(texLayer), &texlayers[0])
